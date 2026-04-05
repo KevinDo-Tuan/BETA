@@ -1,3 +1,4 @@
+.env
 news_results.json
 __pycache__/
 *.pyc

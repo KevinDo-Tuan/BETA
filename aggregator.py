@@ -2030,6 +2030,16 @@ def fetch_bankless() -> list[dict]:
 
 import os as _os
 
+# Load .env file if present
+_env_path = _os.path.join(_os.path.dirname(__file__), ".env")
+if _os.path.exists(_env_path):
+    with open(_env_path) as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                _os.environ.setdefault(_k.strip(), _v.strip())
+
 CURRENTS_API_KEY = _os.getenv("CURRENTS_API_KEY", "")
 CURRENTS_CATEGORIES = ["business", "finance", "technology", "world"]
 

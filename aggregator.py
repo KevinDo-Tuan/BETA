@@ -2576,6 +2576,18 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     url = a["url"]
     source = a.get("source", "")
 
+    # Resolve Google News redirect URLs to actual article URLs.
+    # Without this: WSJ AMP bypass is skipped ("wsj.com" not in redirect URL),
+    # AMP builder domain matching fails, and Wayback gets an unarchived Google URL.
+    if "news.google.com" in url:
+        try:
+            r = requests.get(url, headers=_ENRICH_HEADERS, timeout=(3, 5),
+                             allow_redirects=True, stream=True)
+            r.close()  # stream=True — only headers downloaded, no body
+            url = r.url
+        except Exception:
+            pass
+
     # Layer 1: Source-specific bypasses (WSJ AMP, Economist tinypass)
     if source == "WSJ":
         t = _wsj_full_text(url)

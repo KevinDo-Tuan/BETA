@@ -1196,7 +1196,7 @@ def _wsj_full_text(url: str) -> str:
         resp = requests.get(amp_url, headers={
             "User-Agent": "Mozilla/5.0 (compatible; NewsAggregator/1.0)",
             "Referer": "https://www.facebook.com/",
-        }, timeout=8)
+        }, timeout=(3, 5))
         soup = BeautifulSoup(resp.text, "html.parser")
         # AMP access block contains the unlocked article body
         content = soup.find(attrs={"amp-access": "access"})
@@ -1218,7 +1218,7 @@ def _economist_full_text(url: str) -> str:
         resp = requests.get(url, headers={
             "User-Agent": "Mozilla/5.0 (compatible; NewsAggregator/1.0)",
             "Referer": "https://www.google.com/",
-        }, timeout=8, cookies={})
+        }, timeout=(3, 5), cookies={})
         soup = BeautifulSoup(resp.text, "html.parser")
         # Try common Economist article body selectors
         body = (

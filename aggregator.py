@@ -1,16 +1,16 @@
 """
-News aggregator — 49 sources covering general news, macro-economics,
+News aggregator — 57 sources covering general news, macro-economics,
 geopolitics, market psychology, and crypto for options pricing intelligence.
 
 General:      Reuters, The Guardian, Washington Post, New York Times, CNBC,
               MarketWatch, Bloomberg
-Market:       WSJ (AMP bypass), The Economist (tinypass bypass), Financial Times,
-              Yahoo Finance, Barron's, Business Insider
+Market:       WSJ (AMP bypass), The Economist, Financial Times, Yahoo Finance,
+              Barron's, Business Insider, S&P Global, CBOE
 GDELT:        Market, Macro, Geopolitical, Crypto topic queries (65K+ sources)
-Macro:        Federal Reserve, FRED Blog, Zero Hedge, IMF, BIS,
-              Project Syndicate, VoxEU, Brookings
+Macro:        Federal Reserve, FRED Blog, Zero Hedge, IMF, BIS, ECB, NY Fed,
+              World Bank, OECD, FSB, Project Syndicate, VoxEU, Brookings
 Geopolitics:  Geopolitical Futures, CFR, Foreign Affairs, RAND,
-              Atlantic Council, Stratfor
+              Atlantic Council, Stratfor, Crisis Group
 Sentiment:    Advisor Perspectives, Seeking Alpha
 Crypto:       AInvest, SoSoValue, TradingView, CoinTelegraph, Blockworks,
               crypto.news, The Block, Decrypt, Crypto Briefing, BeInCrypto,
@@ -366,8 +366,8 @@ def fetch_sosovalue() -> list[dict]:
 # ---------------------------------------------------------------------------
 
 TRADINGVIEW_FEEDS = [
-    "https://www.tradingview.com/feed/",  # official trading ideas/outlooks RSS
     "https://news.google.com/rss/search?q=site:tradingview.com&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:tradingview.com&hl=en-US&gl=US&ceid=US:en",
 ]
 
 
@@ -1310,9 +1310,14 @@ def _fetch_sitemap(sitemap_url: str, source_name: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 WSJ_FEEDS = [
+    # Direct Dow Jones feeds (direct wsj.com URLs — AMP bypass works)
     "https://feeds.content.dowjones.io/public/rss/RSSMarketsMain",
     "https://feeds.content.dowjones.io/public/rss/RSSWorldNews",
     "https://feeds.content.dowjones.io/public/rss/WSJcomUSBusiness",
+    "https://feeds.content.dowjones.io/public/rss/RSSWSJD",
+    # Google News (broader coverage, ~80 recent articles/day)
+    "https://news.google.com/rss/search?q=site:wsj.com&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:wsj.com&hl=en-US&gl=US&ceid=US:en",
 ]
 
 
@@ -1330,7 +1335,8 @@ def fetch_wsj() -> list[dict]:
                 published = to_utc(entry.get("published_parsed"))
                 if not is_recent(published):
                     continue
-                full_text = _wsj_full_text(url)
+                # AMP bypass only works on direct wsj.com URLs (not Google redirect URLs)
+                full_text = _wsj_full_text(url) if "wsj.com" in url else ""
                 results.append(article(
                     source="WSJ",
                     title=entry.get("title", ""),
@@ -2113,6 +2119,284 @@ def fetch_gdelt() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Additional Institutional Sources
+# ---------------------------------------------------------------------------
+
+ECB_FEEDS = [
+    "https://news.google.com/rss/search?q=site:ecb.europa.eu&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:ecb.europa.eu&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_ecb() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in ECB_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="ECB",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[ECB] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[ECB] Found {len(unique)} articles")
+    return unique
+
+
+NYFED_FEEDS = [
+    "https://news.google.com/rss/search?q=site:newyorkfed.org&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:newyorkfed.org&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_nyfed() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in NYFED_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="NY Fed",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[NY Fed] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[NY Fed] Found {len(unique)} articles")
+    return unique
+
+
+CRISIS_GROUP_FEED = "https://www.crisisgroup.org/rss-0"
+
+
+def fetch_crisis_group() -> list[dict]:
+    results = []
+    seen: set = set()
+    try:
+        feed = feedparser.parse(CRISIS_GROUP_FEED)
+        for entry in feed.entries:
+            url = entry.get("link", "")
+            if url in seen:
+                continue
+            seen.add(url)
+            published = to_utc(entry.get("published_parsed"))
+            if not is_recent(published):
+                continue
+            results.append(article(
+                source="Crisis Group",
+                title=entry.get("title", ""),
+                url=url,
+                published=published,
+                summary=entry.get("summary", ""),
+            ))
+    except Exception as e:
+        print(f"[Crisis Group] Feed error: {e}")
+    print(f"[Crisis Group] Found {len(results)} articles")
+    return results
+
+
+WORLDBANK_FEEDS = [
+    "https://news.google.com/rss/search?q=site:worldbank.org&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:worldbank.org&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_worldbank() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in WORLDBANK_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="World Bank",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[World Bank] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[World Bank] Found {len(unique)} articles")
+    return unique
+
+
+CBOE_FEEDS = [
+    "https://news.google.com/rss/search?q=site:cboe.com&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:cboe.com&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_cboe() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in CBOE_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="CBOE",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[CBOE] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[CBOE] Found {len(unique)} articles")
+    return unique
+
+
+OECD_FEEDS = [
+    "https://news.google.com/rss/search?q=site:oecd.org&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:oecd.org&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_oecd() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in OECD_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="OECD",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[OECD] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[OECD] Found {len(unique)} articles")
+    return unique
+
+
+SPGLOBAL_FEEDS = [
+    "https://news.google.com/rss/search?q=site:spglobal.com&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:spglobal.com&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_spglobal() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in SPGLOBAL_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="S&P Global",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[S&P Global] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[S&P Global] Found {len(unique)} articles")
+    return unique
+
+
+FSB_FEEDS = [
+    "https://news.google.com/rss/search?q=site:fsb.org&hl=en-US&gl=US&ceid=US:en",
+    "https://news.google.com/rss/search?q=when:24h+site:fsb.org&hl=en-US&gl=US&ceid=US:en",
+]
+
+
+def fetch_fsb() -> list[dict]:
+    results = []
+    seen_urls: set = set()
+    for feed_url in FSB_FEEDS:
+        try:
+            feed = feedparser.parse(feed_url)
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source="FSB",
+                    title=entry.get("title", ""),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+        except Exception as e:
+            print(f"[FSB] Feed error: {e}")
+    seen_titles: set = set()
+    unique = [r for r in results if not (r["title"] in seen_titles or seen_titles.add(r["title"]))]
+    print(f"[FSB] Found {len(unique)} articles")
+    return unique
+
+
+# ---------------------------------------------------------------------------
 # Article enrichment — 5-layer full-text extraction pipeline
 # ---------------------------------------------------------------------------
 
@@ -2126,7 +2410,7 @@ _AMP_BUILDERS = {
 }
 
 # Sources that need Playwright — JS-rendered or Cloudflare-protected (Layer 5)
-_PLAYWRIGHT_SOURCES = {
+_NODRIVER_SOURCES = {
     "CoinTelegraph", "BeInCrypto", "CryptoSlate", "Decrypt",
     "The Block", "CoinDesk", "DL News", "Crypto Briefing",
 }
@@ -2191,21 +2475,24 @@ def _try_googlebot(url: str) -> str:
         return ""
 
 
-def _try_playwright(url: str) -> str:
-    """Layer 5: Headless Chromium — handles JS-rendered pages and basic Cloudflare."""
+def _try_nodriver(url: str) -> str:
+    """Layer 5: nodriver (patched Chromium) — bypasses Cloudflare JS challenges.
+    Successor to undetected-chromedriver. Playwright stealth was deprecated Feb 2025.
+    """
     try:
-        from playwright.sync_api import sync_playwright
-        with sync_playwright() as pw:
-            browser = pw.chromium.launch(headless=True)
-            ctx = browser.new_context(
-                user_agent=_ENRICH_HEADERS["User-Agent"],
-                viewport={"width": 1280, "height": 800},
-            )
-            page = ctx.new_page()
-            page.goto(url, wait_until="networkidle", timeout=15000)
-            html = page.content()
-            browser.close()
-        return _extract(html)
+        import asyncio
+        import nodriver as uc
+
+        async def _get():
+            browser = await uc.start(headless=True)
+            page = await browser.get(url)
+            await asyncio.sleep(3)
+            html = await page.get_content()
+            await browser.stop()
+            return html
+
+        html = asyncio.run(_get())
+        return _extract(html) if html else ""
     except Exception:
         return ""
 
@@ -2260,9 +2547,9 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     if t:
         return a, t
 
-    # Layer 5: Playwright (only for known JS/Cloudflare sources — expensive)
-    if source in _PLAYWRIGHT_SOURCES:
-        t = _try_playwright(url)
+    # Layer 5: nodriver (only for known Cloudflare-protected sources)
+    if source in _NODRIVER_SOURCES:
+        t = _try_nodriver(url)
         if t:
             return a, t
 
@@ -2302,6 +2589,46 @@ def enrich_articles(articles: list[dict], workers: int = 8) -> None:
     print(f"[Enrich] Complete — {success}/{total} articles have full text")
 
 
+def _dedupe_articles(articles: list[dict], threshold: float = 0.72) -> list[dict]:
+    """Remove near-duplicate articles (same story from multiple sources).
+
+    Uses hybrid char-trigram + token Jaccard similarity on titles.
+    Keeps the first (most recently published) article in each cluster.
+    O(n²) on ~1200 articles — runs in < 1s.
+    """
+    import re as _re
+    STOP = frozenset({
+        'the', 'a', 'an', 'to', 'for', 'is', 'in', 'of', 'on', 'and', 'with',
+        'from', 'by', 'at', 'its', 'be', 'or', 'not', 'as', 'says', 'said',
+    })
+
+    def _ng(t: str) -> set:
+        t = _re.sub(r'\s+', ' ', _re.sub(r'[^\w\s]', ' ', t.lower())).strip()
+        return {t[i:i+3] for i in range(max(0, len(t) - 2))}
+
+    def _tk(t: str) -> set:
+        return {w for w in _re.sub(r'[^\w\s]', ' ', t.lower()).split()
+                if w not in STOP and len(w) > 1}
+
+    def _jac(a: set, b: set) -> float:
+        return len(a & b) / len(a | b) if a and b else 0.0
+
+    ng = [_ng(a["title"]) for a in articles]
+    tk = [_tk(a["title"]) for a in articles]
+    removed: set = set()
+    for i in range(len(articles)):
+        if i in removed:
+            continue
+        for j in range(i + 1, len(articles)):
+            if j in removed:
+                continue
+            if max(_jac(ng[i], ng[j]), _jac(tk[i], tk[j])) >= threshold:
+                removed.add(j)
+    kept = [a for i, a in enumerate(articles) if i not in removed]
+    print(f"[Dedup] {len(articles)} → {len(kept)} articles ({len(removed)} near-duplicates removed)")
+    return kept
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -2309,63 +2636,39 @@ def enrich_articles(articles: list[dict], workers: int = 8) -> None:
 def run():
     print(f"\nFetching news from the last {HOURS} hours (since {CUTOFF.strftime('%Y-%m-%d %H:%M UTC')})\n")
 
+    # Fetch all sources in parallel (20 workers) — drops ~30s sequential to ~5s
+    fetchers = [
+        fetch_reuters, fetch_guardian, fetch_ainvest, fetch_wapo, fetch_nyt,
+        fetch_sosovalue, fetch_tradingview, fetch_bloomberg, fetch_fed, fetch_fred,
+        fetch_zerohedge, fetch_geopolitical_futures, fetch_cnbc, fetch_cfr,
+        fetch_marketwatch, fetch_cointelegraph, fetch_blockworks, fetch_cryptonews_site,
+        fetch_theblock, fetch_decrypt, fetch_crypto_briefing, fetch_beincrypto,
+        fetch_dlnews, fetch_bitcoin_magazine, fetch_cryptonews, fetch_protos,
+        fetch_cryptoslate, fetch_coindesk, fetch_unchained,
+        # Market / Finance
+        fetch_wsj, fetch_economist, fetch_ft, fetch_yahoo_finance,
+        fetch_barrons, fetch_business_insider, fetch_spglobal, fetch_cboe,
+        # Macro / Economics
+        fetch_imf, fetch_bis, fetch_project_syndicate, fetch_voxeu, fetch_brookings,
+        fetch_ecb, fetch_nyfed, fetch_worldbank, fetch_oecd, fetch_fsb,
+        # Geopolitical
+        fetch_foreign_affairs, fetch_rand, fetch_atlantic_council, fetch_stratfor,
+        fetch_crisis_group,
+        # Sentiment / Psychology
+        fetch_advisor_perspectives, fetch_seeking_alpha,
+        # Crypto Research
+        fetch_messari, fetch_glassnode, fetch_defiant, fetch_bankless,
+    ]
     all_articles = []
-    all_articles += fetch_reuters()
-    all_articles += fetch_guardian()
-    all_articles += fetch_ainvest()
-    all_articles += fetch_wapo()
-    all_articles += fetch_nyt()
-    all_articles += fetch_sosovalue()
-    all_articles += fetch_tradingview()
-    all_articles += fetch_bloomberg()
-    all_articles += fetch_fed()
-    all_articles += fetch_fred()
-    all_articles += fetch_zerohedge()
-    all_articles += fetch_geopolitical_futures()
-    all_articles += fetch_cnbc()
-    all_articles += fetch_cfr()
-    all_articles += fetch_marketwatch()
-    all_articles += fetch_cointelegraph()
-    all_articles += fetch_blockworks()
-    all_articles += fetch_cryptonews_site()
-    all_articles += fetch_theblock()
-    all_articles += fetch_decrypt()
-    all_articles += fetch_crypto_briefing()
-    all_articles += fetch_beincrypto()
-    all_articles += fetch_dlnews()
-    all_articles += fetch_bitcoin_magazine()
-    all_articles += fetch_cryptonews()
-    all_articles += fetch_protos()
-    all_articles += fetch_cryptoslate()
-    all_articles += fetch_coindesk()
-    all_articles += fetch_unchained()
-    # Market / Finance
-    all_articles += fetch_wsj()
-    all_articles += fetch_economist()
-    all_articles += fetch_ft()
-    all_articles += fetch_yahoo_finance()
-    all_articles += fetch_barrons()
-    all_articles += fetch_business_insider()
-    # Macro / Economics
-    all_articles += fetch_imf()
-    all_articles += fetch_bis()
-    all_articles += fetch_project_syndicate()
-    all_articles += fetch_voxeu()
-    all_articles += fetch_brookings()
-    # Geopolitical
-    all_articles += fetch_foreign_affairs()
-    all_articles += fetch_rand()
-    all_articles += fetch_atlantic_council()
-    all_articles += fetch_stratfor()
-    # Sentiment / Psychology
-    all_articles += fetch_advisor_perspectives()
-    all_articles += fetch_seeking_alpha()
-    # Crypto Research
-    all_articles += fetch_messari()
-    all_articles += fetch_glassnode()
-    all_articles += fetch_defiant()
-    all_articles += fetch_bankless()
-    # GDELT — cross-source topic coverage (4 queries × 75 results, ~20s)
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        futures = {executor.submit(f): f.__name__ for f in fetchers}
+        for future in as_completed(futures):
+            try:
+                all_articles += future.result()
+            except Exception as e:
+                print(f"[{futures[future]}] Fetcher error: {e}")
+
+    # GDELT runs separately — has internal 30s rate-limit sleeps
     all_articles += fetch_gdelt()
 
     # Sort by published date descending
@@ -2375,6 +2678,9 @@ def run():
         return datetime.fromisoformat(a["published"])
 
     all_articles.sort(key=sort_key, reverse=True)
+
+    # Near-dedup — collapse same story from multiple sources
+    all_articles = _dedupe_articles(all_articles)
 
     enrich_articles(all_articles)
 

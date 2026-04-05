@@ -2028,93 +2028,123 @@ def fetch_bankless() -> list[dict]:
 # articles from unlisted or RSS-dead sources still surface.
 # ---------------------------------------------------------------------------
 
-GDELT_BASE = "https://api.gdeltproject.org/api/v2/doc/doc"
-GDELT_QUERIES = [
-    ("Market",       "stocks+market+earnings+Fed+interest+rates+equity+sourcelang:english"),
-    ("Macro",        "inflation+GDP+tariffs+trade+monetary+policy+recession+sourcelang:english"),
-    ("Geopolitical", "geopolitics+war+conflict+sanctions+diplomacy+NATO+sourcelang:english"),
-    ("Crypto",       "bitcoin+cryptocurrency+ethereum+DeFi+blockchain+crypto+sourcelang:english"),
-]
+import os as _os
+
+CURRENTS_API_KEY = _os.getenv("CURRENTS_API_KEY", "")
+CURRENTS_CATEGORIES = ["business", "finance", "technology", "world"]
 
 
-def _parse_gdelt_date(s: str):
-    """Parse GDELT seendate format: '20260404T140000Z'."""
-    try:
-        return datetime.strptime(s, "%Y%m%dT%H%M%SZ").replace(tzinfo=timezone.utc)
-    except Exception:
-        return None
-
-
-def fetch_gdelt() -> list[dict]:
-    """Query GDELT DocAPI across 4 topic categories.
-    Retries on 429 with exponential backoff (10s → 20s → 40s → 80s).
+def fetch_currents() -> list[dict]:
+    """Broad market/macro/geo coverage via Currents API (120,000+ sources).
+    Free tier: 1,000 req/day, real-time, no credit card.
+    Register free at https://currentsapi.services/en/register
+    Requires env var: CURRENTS_API_KEY
     """
+    if not CURRENTS_API_KEY:
+        print("[Currents] Skipping — CURRENTS_API_KEY not set")
+        return []
+
     results = []
     seen_urls: set = set()
-    timespan = HOURS * 60  # minutes
 
-    for label, query in GDELT_QUERIES:
-        resp = None
-        for attempt in range(2):
-            wait = 15 * (2 ** attempt)  # 15s, 30s
-            try:
-                resp = requests.get(
-                    GDELT_BASE,
-                    params={
-                        "query": query,
-                        "mode": "artlist",
-                        "maxrecords": "75",
-                        "timespan": str(timespan),
-                        "format": "json",
-                    },
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; NewsAggregator/1.0)"},
-                    timeout=8,
-                )
-                if resp.status_code == 200:
-                    break
-                print(f"[GDELT/{label}] HTTP {resp.status_code} — retrying in {wait}s")
-                time.sleep(wait)
-            except Exception as e:
-                print(f"[GDELT/{label}] Request error: {e} — skipping")
-                break  # fail fast on connection errors, don't retry
-        else:
-            print(f"[GDELT/{label}] All retries exhausted, skipping")
-            continue
-        if resp is None:
-            continue
-
-        body = resp.text.strip()
-        if not body or not body.startswith("{"):
-            print(f"[GDELT/{label}] Non-JSON response (rate-limit or empty) — skipping")
-            time.sleep(30)
-            continue
+    for category in CURRENTS_CATEGORIES:
         try:
-            arts = resp.json().get("articles", [])
+            resp = requests.get(
+                "https://api.currentsapi.services/v1/latest-news",
+                params={
+                    "apiKey": CURRENTS_API_KEY,
+                    "category": category,
+                    "language": "en",
+                },
+                timeout=(3, 10),
+            )
+            if resp.status_code != 200:
+                print(f"[Currents/{category.title()}] HTTP {resp.status_code}")
+                continue
+            news = resp.json().get("news", [])
             count = 0
-            for a in arts:
-                url = a.get("url", "")
+            for item in news:
+                url = item.get("url", "")
                 if not url or url in seen_urls:
                     continue
-                if a.get("language", "English") != "English":
-                    continue
                 seen_urls.add(url)
-                published = _parse_gdelt_date(a.get("seendate", ""))
+                try:
+                    published = datetime.fromisoformat(
+                        item.get("published", "").replace(" ", "T").replace("Z", "+00:00")
+                    )
+                except Exception:
+                    published = None
                 if not is_recent(published):
                     continue
                 results.append(article(
-                    source=f"GDELT/{label}",
-                    title=a.get("title", "").strip(),
+                    source=f"Currents/{category.title()}",
+                    title=item.get("title", "").strip(),
                     url=url,
                     published=published,
-                    summary="",
+                    summary=item.get("description", ""),
                 ))
                 count += 1
-            print(f"[GDELT/{label}] Found {count} articles")
+            print(f"[Currents/{category.title()}] Found {count} articles")
         except Exception as e:
-            print(f"[GDELT/{label}] Parse error: {e}")
+            print(f"[Currents/{category.title()}] Error: {e}")
 
-        time.sleep(30)  # 30s between queries — GDELT's actual sustained tolerance
+    return results
 
+
+# 3 keyword variations per topic × up to 100 articles each = ~300 unique per topic after dedup
+GNEWS_TOPIC_FEEDS = [
+    ("Market",      "stocks+S%26P500+earnings+equity+Wall+Street"),
+    ("Market",      "NYSE+NASDAQ+Dow+Jones+trading+shares+rally"),
+    ("Market",      "stock+market+bull+bear+sector+hedge+fund+options+volatility"),
+
+    ("Fed",         "Federal+Reserve+interest+rates+monetary+policy+Powell"),
+    ("Fed",         "FOMC+rate+hike+cut+basis+points+yield+curve+treasury"),
+    ("Fed",         "central+bank+ECB+BOJ+BOE+liquidity+quantitative+tightening"),
+
+    ("Macro",       "inflation+CPI+GDP+tariffs+recession+trade+war"),
+    ("Macro",       "unemployment+jobs+payroll+consumer+spending+retail+sales"),
+    ("Macro",       "fiscal+deficit+debt+budget+sanctions+commodities+oil+energy"),
+
+    ("Geopolitical", "geopolitics+war+conflict+diplomacy+OPEC+sanctions"),
+    ("Geopolitical", "China+Taiwan+Russia+Ukraine+Middle+East+tensions"),
+    ("Geopolitical", "energy+supply+chain+commodity+disruption+trade+dispute"),
+]
+_GNEWS_TOPIC_BASE = "https://news.google.com/rss/search?hl=en-US&gl=US&ceid=US:en&q=when:24h+"
+
+
+def fetch_gnews_topics() -> list[dict]:
+    """Broad topic coverage via Google News RSS across Google's full source index.
+    No API key required. 12 queries × up to 100 articles = ~700-900 unique after dedup.
+    Covers market, Fed, macro, and geopolitical angles not tied to specific sources.
+    """
+    results = []
+    seen_urls: set = set()
+    topic_counts: dict = {}
+
+    for label, query in GNEWS_TOPIC_FEEDS:
+        try:
+            feed = feedparser.parse(f"{_GNEWS_TOPIC_BASE}{query}")
+            for entry in feed.entries:
+                url = entry.get("link", "")
+                if not url or url in seen_urls:
+                    continue
+                seen_urls.add(url)
+                published = to_utc(entry.get("published_parsed"))
+                if not is_recent(published):
+                    continue
+                results.append(article(
+                    source=f"GNews/{label}",
+                    title=entry.get("title", "").strip(),
+                    url=url,
+                    published=published,
+                    summary=entry.get("summary", ""),
+                ))
+                topic_counts[label] = topic_counts.get(label, 0) + 1
+        except Exception as e:
+            print(f"[GNews/{label}] Feed error: {e}")
+
+    for label, count in topic_counts.items():
+        print(f"[GNews/{label}] Found {count} articles")
     return results
 
 
@@ -2568,7 +2598,8 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
             return a, t
 
     # Layer 6: Wayback Machine (skip for sources unlikely to be archived)
-    if source not in _NO_WAYBACK_SOURCES:
+    _skip_wayback = source in _NO_WAYBACK_SOURCES or source.startswith(("GNews/", "Currents/"))
+    if not _skip_wayback:
         t = _try_wayback(url)
         if t:
             return a, t
@@ -2675,6 +2706,8 @@ def run():
         fetch_advisor_perspectives, fetch_seeking_alpha,
         # Crypto Research
         fetch_messari, fetch_glassnode, fetch_defiant, fetch_bankless,
+        # Broad aggregators (replaces GDELT)
+        fetch_currents, fetch_gnews_topics,
     ]
     all_articles = []
     with ThreadPoolExecutor(max_workers=20) as executor:
@@ -2684,9 +2717,6 @@ def run():
                 all_articles += future.result()
             except Exception as e:
                 print(f"[{futures[future]}] Fetcher error: {e}")
-
-    # GDELT runs separately — has internal 30s rate-limit sleeps
-    all_articles += fetch_gdelt()
 
     # Sort by published date descending
     def sort_key(a):

@@ -2579,17 +2579,25 @@ def _try_wayback(url: str) -> str:
 def _try_12ft(url: str) -> str:
     """Layer 6b: 12ft.io paywall bypass — fetches Googlebot-cached version.
     Only used for known paywalled sources (see _PAYWALL_SOURCES).
+    Uses params= for correct URL encoding of article URLs containing & and ?.
     """
     try:
         resp = requests.get(
-            f"https://12ft.io/proxy?q={url}",
+            "https://12ft.io/proxy",
+            params={"q": url},
             headers=_ENRICH_HEADERS,
             timeout=(3, 10),
             allow_redirects=True,
         )
-        return _extract(resp.text) if resp.status_code == 200 else ""
+        if resp.status_code != 200:
+            return ""
+        text = _extract(resp.text)
+        # 12ft.io returns its own UI shell if blocked — check we got real article text
+        if text and len(text) > 200:
+            return text
     except Exception:
-        return ""
+        pass
+    return ""
 
 
 def _fetch_content_layered(a: dict) -> tuple[dict, str]:

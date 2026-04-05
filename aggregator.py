@@ -2435,6 +2435,18 @@ def _extract(html: str) -> str:
     return text.strip() if text else ""
 
 
+_NO_WAYBACK_SOURCES = {
+    "CoinTelegraph", "BeInCrypto", "CryptoSlate", "Decrypt", "The Block",
+    "CoinDesk", "DL News", "Crypto Briefing", "Blockworks", "Bitcoin Magazine",
+    "CryptoNews", "Protos", "Unchained", "Messari", "Glassnode", "The Defiant",
+    "Bankless", "TradingView", "AInvest", "Seeking Alpha", "Advisor Perspectives",
+    "crypto.news",
+}
+
+import threading as _threading
+_NODRIVER_SEM = _threading.Semaphore(4)  # max 4 Chrome instances at once
+
+
 def _try_amp(url: str) -> str:
     """Layer 2: AMP endpoint (Bloomberg, NYT, CNBC, WaPo, FT)."""
     parsed = urlparse(url)
@@ -2444,17 +2456,17 @@ def _try_amp(url: str) -> str:
         return ""
     try:
         amp_url = builder(url, parsed)
-        resp = requests.get(amp_url, headers=_ENRICH_HEADERS, timeout=8)
+        resp = requests.get(amp_url, headers=_ENRICH_HEADERS, timeout=(3, 5))
         return _extract(resp.text) if resp.status_code == 200 else ""
     except Exception:
         return ""
 
 
 def _try_trafilatura(url: str) -> str:
-    """Layer 3: Direct fetch with trafilatura."""
+    """Layer 3: Direct fetch + trafilatura extraction (explicit 5s timeout)."""
     try:
-        html = trafilatura.fetch_url(url)
-        return _extract(html) if html else ""
+        resp = requests.get(url, headers=_ENRICH_HEADERS, timeout=(3, 5), allow_redirects=True)
+        return _extract(resp.text) if resp.status_code == 200 else ""
     except Exception:
         return ""
 
@@ -2469,7 +2481,7 @@ def _try_googlebot(url: str) -> str:
         resp = requests.get(url, headers={
             "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
             "Referer": "https://www.google.com/",
-        }, timeout=10)
+        }, timeout=(3, 5))
         return _extract(resp.text) if resp.status_code == 200 else ""
     except Exception:
         return ""
@@ -2478,39 +2490,41 @@ def _try_googlebot(url: str) -> str:
 def _try_nodriver(url: str) -> str:
     """Layer 5: nodriver (patched Chromium) — bypasses Cloudflare JS challenges.
     Successor to undetected-chromedriver. Playwright stealth was deprecated Feb 2025.
+    Semaphore caps concurrent Chrome instances at 4.
     """
-    try:
-        import asyncio
-        import nodriver as uc
+    with _NODRIVER_SEM:
+        try:
+            import asyncio
+            import nodriver as uc
 
-        async def _get():
-            browser = await uc.start(headless=True)
-            page = await browser.get(url)
-            await asyncio.sleep(3)
-            html = await page.get_content()
-            await browser.stop()
-            return html
+            async def _get():
+                browser = await uc.start(headless=True)
+                page = await browser.get(url)
+                await asyncio.sleep(1.5)
+                html = await page.get_content()
+                await browser.stop()
+                return html
 
-        html = asyncio.run(_get())
-        return _extract(html) if html else ""
-    except Exception:
-        return ""
+            loop = asyncio.new_event_loop()
+            html = loop.run_until_complete(_get())
+            loop.close()
+            return _extract(html) if html else ""
+        except Exception:
+            return ""
 
 
 def _try_wayback(url: str) -> str:
-    """Layer 6: Wayback Machine snapshot — last resort. Major news articles from
-    Reuters, Bloomberg, NYT, FT get archived within minutes of publication.
-    12ft.io was shut down July 2025 (legal pressure); Wayback Machine is the
-    stable free alternative.
+    """Layer 6: Wayback Machine snapshot — last resort for major news sources.
+    Skipped for crypto/social sources (see _NO_WAYBACK_SOURCES) that are never archived.
     """
     try:
         avail = requests.get(
             f"https://archive.org/wayback/available?url={url}",
-            timeout=8,
+            timeout=(3, 4),
         ).json()
         snapshot_url = avail.get("archived_snapshots", {}).get("closest", {}).get("url", "")
         if snapshot_url:
-            resp = requests.get(snapshot_url, headers=_ENRICH_HEADERS, timeout=12)
+            resp = requests.get(snapshot_url, headers=_ENRICH_HEADERS, timeout=(3, 6))
             return _extract(resp.text) if resp.status_code == 200 else ""
     except Exception:
         pass
@@ -2537,7 +2551,7 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     if t:
         return a, t
 
-    # Layer 3: trafilatura direct
+    # Layer 3: trafilatura direct (explicit timeout via requests)
     t = _try_trafilatura(url)
     if t:
         return a, t
@@ -2547,30 +2561,33 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     if t:
         return a, t
 
-    # Layer 5: nodriver (only for known Cloudflare-protected sources)
+    # Layer 5: nodriver (only for known Cloudflare-protected sources, capped at 4 concurrent)
     if source in _NODRIVER_SOURCES:
         t = _try_nodriver(url)
         if t:
             return a, t
 
-    # Layer 6: Wayback Machine (last resort)
-    t = _try_wayback(url)
-    return a, t or ""
+    # Layer 6: Wayback Machine (skip for sources unlikely to be archived)
+    if source not in _NO_WAYBACK_SOURCES:
+        t = _try_wayback(url)
+        if t:
+            return a, t
+
+    return a, ""
 
 
-def enrich_articles(articles: list[dict], workers: int = 8) -> None:
-    """Populate the 'content' field on every article using a 5-layer pipeline.
+def enrich_articles(articles: list[dict], workers: int = 50) -> None:
+    """Populate the 'content' field on every article using a 6-layer pipeline.
 
     Layers tried in order until one succeeds:
       1. Source-specific bypass  — WSJ (AMP endpoint), Economist (tinypass block)
       2. AMP endpoint            — Bloomberg, NYT, CNBC, WaPo, FT
-      3. trafilatura direct      — open-access sites (~60% hit rate)
+      3. trafilatura direct      — open-access sites (explicit 5s timeout)
       4. Googlebot UA spoof      — paywalled sites serve full content to Googlebot
-      5. Playwright              — JS-rendered / Cloudflare-protected crypto sites
-      6. Wayback Machine         — archived snapshot (last resort)
+      5. nodriver                — Cloudflare-protected crypto sites (≤4 concurrent)
+      6. Wayback Machine         — archived snapshot (skipped for crypto/social sources)
 
-    Uses a thread pool so all URLs are fetched concurrently.
-    Playwright (Layer 5) runs inside its own threads — one browser per worker.
+    Uses 50 threads (I/O-bound). nodriver browser instances capped at 4 via semaphore.
     """
     total = len(articles)
     success = 0

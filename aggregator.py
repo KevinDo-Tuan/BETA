@@ -2475,6 +2475,11 @@ def _extract(html: str) -> str:
     return text.strip() if text else ""
 
 
+_PAYWALL_SOURCES = {
+    "WSJ", "The Economist", "Financial Times", "Bloomberg",
+    "Washington Post", "New York Times", "Barron's", "Business Insider",
+}
+
 _NO_WAYBACK_SOURCES = {
     "CoinTelegraph", "BeInCrypto", "CryptoSlate", "Decrypt", "The Block",
     "CoinDesk", "DL News", "Crypto Briefing", "Blockworks", "Bitcoin Magazine",
@@ -2571,6 +2576,22 @@ def _try_wayback(url: str) -> str:
     return ""
 
 
+def _try_12ft(url: str) -> str:
+    """Layer 6b: 12ft.io paywall bypass — fetches Googlebot-cached version.
+    Only used for known paywalled sources (see _PAYWALL_SOURCES).
+    """
+    try:
+        resp = requests.get(
+            f"https://12ft.io/proxy?q={url}",
+            headers=_ENRICH_HEADERS,
+            timeout=(3, 10),
+            allow_redirects=True,
+        )
+        return _extract(resp.text) if resp.status_code == 200 else ""
+    except Exception:
+        return ""
+
+
 def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     """Try all layers in order until one returns text."""
     url = a["url"]
@@ -2623,6 +2644,12 @@ def _fetch_content_layered(a: dict) -> tuple[dict, str]:
     _skip_wayback = source in _NO_WAYBACK_SOURCES or source.startswith(("GNews/", "Currents/"))
     if not _skip_wayback:
         t = _try_wayback(url)
+        if t:
+            return a, t
+
+    # Layer 6b: 12ft.io paywall bypass (only for known paywalled sources)
+    if source in _PAYWALL_SOURCES:
+        t = _try_12ft(url)
         if t:
             return a, t
 

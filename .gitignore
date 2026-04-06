@@ -1,5 +1,6 @@
 .env
 news_results.json
+mediacloud_feeds.json
 __pycache__/
 *.pyc
 .vscode/

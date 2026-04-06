@@ -110,7 +110,7 @@ while True:
         break
     processed += len(batch)
     for feed in batch:
-        if feed.get("sources_id") not in english_source_ids:
+        if feed.get("source") not in english_source_ids:
             continue
         url = feed.get("url", "").strip()
         if not url or url in seen_urls:

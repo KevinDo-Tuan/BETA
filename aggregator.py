@@ -19,7 +19,7 @@ Crypto:       AInvest, SoSoValue, TradingView, CoinTelegraph, Blockworks,
 """
 
 import sys
-from pathlib import Path
+
 import feedparser
 import requests
 import trafilatura
@@ -2738,72 +2738,6 @@ def _dedupe_articles(articles: list[dict], threshold: float = 0.72) -> list[dict
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-# Media Cloud — broad RSS coverage from curated English-language sources
-# ---------------------------------------------------------------------------
-_MC_FEEDS_PATH = Path(__file__).parent / "mediacloud_feeds.json"
-
-
-def fetch_mediacloud_feeds() -> list[dict]:
-    """Fetch articles from Media Cloud's curated English RSS feed list.
-
-    Requires mediacloud_feeds.json — run dump_mediacloud_feeds.py once first.
-    Fetches all feeds in parallel (100 workers), returns articles from last 24h.
-    """
-    if not _MC_FEEDS_PATH.exists():
-        print("[MediaCloud] Skipping — mediacloud_feeds.json not found. Run dump_mediacloud_feeds.py first.")
-        return []
-
-    with open(_MC_FEEDS_PATH, encoding="utf-8") as f:
-        feeds = json.load(f)
-
-    if not feeds:
-        print("[MediaCloud] Feed list is empty.")
-        return []
-
-    print(f"[MediaCloud] Fetching {len(feeds):,} feeds...")
-
-    results: list[dict] = []
-    seen_urls: set = set()
-    lock = _threading.Lock()
-
-    def _fetch_one(feed: dict) -> list[dict]:
-        try:
-            parsed = feedparser.parse(feed["url"])
-            items = []
-            for entry in parsed.entries:
-                url = entry.get("link", "")
-                if not url:
-                    continue
-                published = to_utc(entry.get("published_parsed"))
-                if not is_recent(published):
-                    continue
-                # Truncate feed name for source label (max 40 chars)
-                name = (feed.get("name") or "").strip()[:40] or "MediaCloud"
-                items.append(article(
-                    source=f"MC/{name}",
-                    title=entry.get("title", "").strip(),
-                    url=url,
-                    published=published,
-                    summary=entry.get("summary", ""),
-                ))
-            return items
-        except Exception:
-            return []
-
-    with ThreadPoolExecutor(max_workers=100) as pool:
-        futures = [pool.submit(_fetch_one, f) for f in feeds]
-        for fut in as_completed(futures):
-            for item in fut.result():
-                with lock:
-                    if item["url"] not in seen_urls:
-                        seen_urls.add(item["url"])
-                        results.append(item)
-
-    print(f"[MediaCloud] Found {len(results):,} articles from {len(feeds):,} feeds")
-    return results
-
-
-# ---------------------------------------------------------------------------
 
 def run():
     print(f"\nFetching news from the last {HOURS} hours (since {CUTOFF.strftime('%Y-%m-%d %H:%M UTC')})\n")
@@ -2831,7 +2765,7 @@ def run():
         # Crypto Research
         fetch_messari, fetch_glassnode, fetch_defiant, fetch_bankless,
         # Broad aggregators (replaces GDELT)
-        fetch_currents, fetch_gnews_topics, fetch_mediacloud_feeds,
+        fetch_currents, fetch_gnews_topics,
     ]
     all_articles = []
     with ThreadPoolExecutor(max_workers=20) as executor:

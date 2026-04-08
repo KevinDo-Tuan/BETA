@@ -18,7 +18,6 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-
 import requests
 from dotenv import load_dotenv
 
@@ -29,9 +28,8 @@ _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 # ── Config ────────────────────────────────────────────────────────────────────
 INPUT_FILE      = Path("news_results.json")
-OUTPUT_FILE     = Path("news_results_end.json")
+OUTPUT_FILE     = Path("news_stage1.json")   # Stage 2 (dedup_nlp.py) writes news_results_end.json
 BATCH_SIZE      = 80        # 80 articles -> ~25 batches total; fits Groq payload limit
-DEDUP_THRESHOLD = 0.72
 MAX_RETRIES     = 3         # retries on 429
 
 # Per-provider concurrency limits (semaphores cap simultaneous active calls)
@@ -351,16 +349,15 @@ def main():
             time.sleep(WAVE_PAUSE)
 
     elapsed = time.time() - t0
-    print(f"\n[agents] All agents done in {elapsed:.1f}s — {len(all_results)} items before dedup")
+    print(f"\n[agents] All agents done in {elapsed:.1f}s — {len(all_results)} items collected")
 
-    final = dedup(all_results)
-    final.sort(key=lambda x: x.get("published", "") or "", reverse=True)
-
-    OUTPUT_FILE.write_text(json.dumps(final, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"[agents] Saved {len(final)} items -> {OUTPUT_FILE}")
+    all_results.sort(key=lambda x: x.get("published", "") or "", reverse=True)
+    OUTPUT_FILE.write_text(json.dumps(all_results, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"[agents] Saved {len(all_results)} items -> {OUTPUT_FILE}")
+    print("[agents] Run: py dedup_nlp.py   to deduplicate -> news_results_end.json")
 
     print("\n── First 5 results ──")
-    for item in final[:5]:
+    for item in all_results[:5]:
         print(f"  [{item.get('theme', '?').upper()}] {item.get('title', '')[:80]}")
         for b in item.get("bullets", []):
             print(f"    • {b}")

@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>News Graph — MiroFish</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* ── Reset & Base (from App.vue) ─────────────────────────────────── */
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'JetBrains Mono', 'Space Grotesk', 'Noto Sans SC', monospace;
+      -webkit-font-smoothing: antialiased;
+      color: #000;
+      background: #fff;
+      height: 100vh;
+      overflow: hidden;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #f1f1f1; }
+    ::-webkit-scrollbar-thumb { background: #000; }
+    ::-webkit-scrollbar-thumb:hover { background: #333; }
+    button { font-family: inherit; }
+
+    /* ── Navbar (from App.vue) ───────────────────────────────────────── */
+    .navbar {
+      height: 60px; background: #000; color: #fff;
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 0 40px; flex-shrink: 0;
+    }
+    .nav-brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800; letter-spacing: 1px; font-size: 1.1rem;
+    }
+    .nav-links { display: flex; align-items: center; gap: 20px; }
+    .nav-meta { font-size: 11px; color: #666; font-family: 'JetBrains Mono', monospace; }
+    .github-link {
+      color: #fff; text-decoration: none;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem; font-weight: 500;
+      display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;
+    }
+    .github-link:hover { opacity: 0.7; }
+
+    /* ── Layout ──────────────────────────────────────────────────────── */
+    .workbench { display: flex; height: calc(100vh - 60px); }
+
+    /* ── Left Workbench Panel (Step1GraphBuild.vue) ──────────────────── */
+    .workbench-panel {
+      width: 320px; flex-shrink: 0;
+      background: #FAFAFA; border-right: 1px solid #EAEAEA;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .scroll-container {
+      flex: 1; overflow-y: auto; padding: 24px;
+      display: flex; flex-direction: column; gap: 20px;
+    }
+
+    /* Step cards */
+    .step-card {
+      background: #fff; border-radius: 8px; padding: 20px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+      border: 1px solid #EAEAEA; transition: all 0.3s ease; position: relative;
+    }
+    .step-card.active { border-color: #FF5722; box-shadow: 0 4px 12px rgba(255,87,34,0.08); }
+    .step-card.completed { border-color: #E8F5E9; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .step-info { display: flex; align-items: center; gap: 12px; }
+    .step-num { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #E0E0E0; }
+    .step-card.active .step-num, .step-card.completed .step-num { color: #000; }
+    .step-title { font-weight: 600; font-size: 14px; letter-spacing: 0.5px; }
+    .badge { font-size: 10px; padding: 4px 8px; border-radius: 4px; font-weight: 600; text-transform: uppercase; }
+    .badge.success  { background: #E8F5E9; color: #2E7D32; }
+    .badge.processing { background: #FF5722; color: #fff; }
+    .badge.accent   { background: #FF5722; color: #fff; }
+    .badge.pending  { background: #F5F5F5; color: #999; }
+    .api-note { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: #999; margin-bottom: 8px; }
+    .description { font-size: 12px; color: #666; line-height: 1.5; margin-bottom: 16px; }
+
+    /* Tags */
+    .tags-container { margin-top: 12px; }
+    .tag-label { display: block; font-size: 10px; color: #AAA; margin-bottom: 8px; font-weight: 600; }
+    .tags-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .entity-tag {
+      background: #F5F5F5; border: 1px solid #EEE;
+      padding: 4px 10px; border-radius: 4px;
+      font-size: 11px; color: #333;
+      font-family: 'JetBrains Mono', monospace;
+      transition: all 0.2s; cursor: pointer;
+    }
+    .entity-tag:hover { background: #E0E0E0; border-color: #CCC; }
+    .entity-tag.active { background: #000; color: #fff; border-color: #000; }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+      background: #F9F9F9; padding: 16px; border-radius: 6px;
+    }
+    .stat-card { text-align: center; }
+    .stat-value { display: block; font-size: 20px; font-weight: 700; color: #000; font-family: 'JetBrains Mono', monospace; }
+    .stat-label { font-size: 9px; color: #999; text-transform: uppercase; margin-top: 4px; display: block; }
+
+    /* Action button */
+    .action-btn {
+      width: 100%; background: #000; color: #fff; border: none;
+      padding: 14px; border-radius: 4px; font-size: 12px; font-weight: 600;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .action-btn:hover:not(:disabled) { opacity: 0.8; }
+    .action-btn:disabled { background: #CCC; cursor: not-allowed; }
+
+    /* Progress */
+    .progress-section { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #FF5722; margin-bottom: 12px; }
+    .spinner-sm { width: 14px; height: 14px; border: 2px solid #FFCCBC; border-top-color: #FF5722; border-radius: 50%; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* System Dashboard */
+    .system-logs {
+      background: #000; color: #ddd; padding: 16px;
+      font-family: 'JetBrains Mono', monospace;
+      border-top: 1px solid #222; flex-shrink: 0;
+    }
+    .log-header { display: flex; justify-content: space-between; border-bottom: 1px solid #333; padding-bottom: 8px; margin-bottom: 8px; font-size: 10px; color: #888; }
+    .log-content { display: flex; flex-direction: column; gap: 4px; height: 80px; overflow-y: auto; padding-right: 4px; }
+    .log-content::-webkit-scrollbar { width: 4px; }
+    .log-content::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+    .log-line { font-size: 11px; display: flex; gap: 12px; line-height: 1.5; }
+    .log-time { color: #666; min-width: 75px; flex-shrink: 0; }
+    .log-msg { color: #CCC; word-break: break-all; }
+
+    /* ── Graph Panel (GraphPanel.vue) ────────────────────────────────── */
+    .graph-panel {
+      flex: 1; position: relative; overflow: hidden;
+      background-color: #FAFAFA;
+      background-image: radial-gradient(#D0D0D0 1.5px, transparent 1.5px);
+      background-size: 24px 24px;
+    }
+    .panel-header {
+      position: absolute; top: 0; left: 0; right: 0;
+      padding: 16px 20px; z-index: 10;
+      display: flex; justify-content: space-between; align-items: center;
+      background: linear-gradient(to bottom, rgba(255,255,255,0.95), rgba(255,255,255,0));
+      pointer-events: none;
+    }
+    .panel-title { font-size: 14px; font-weight: 600; color: #333; pointer-events: auto; }
+    .header-tools { pointer-events: auto; display: flex; gap: 10px; align-items: center; }
+    .tool-btn {
+      height: 32px; padding: 0 12px; border: 1px solid #E0E0E0; background: #fff;
+      border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      gap: 6px; cursor: pointer; color: #666; transition: all 0.2s;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02); font-size: 13px; font-family: inherit;
+    }
+    .tool-btn:hover { background: #F5F5F5; color: #000; border-color: #CCC; }
+    .tool-btn .btn-text { font-size: 12px; }
+    .icon-refresh.spinning { animation: spin 1s linear infinite; }
+    #graph-svg { width: 100%; height: 100%; display: block; }
+
+    /* Graph state */
+    .graph-state { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; color: #999; }
+    .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.2; }
+
+    /* Legend */
+    .graph-legend {
+      position: absolute; bottom: 24px; left: 24px;
+      background: rgba(255,255,255,0.95); padding: 12px 16px;
+      border-radius: 8px; border: 1px solid #EAEAEA;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.06); z-index: 10;
+    }
+    .legend-title { display: block; font-size: 11px; font-weight: 600; color: #E91E63; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .legend-items { display: flex; flex-wrap: wrap; gap: 10px 16px; max-width: 360px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #555; }
+    .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    /* Edge label toggle */
+    .edge-labels-toggle {
+      position: absolute; top: 60px; right: 20px;
+      display: flex; align-items: center; gap: 10px;
+      background: #fff; padding: 8px 14px; border-radius: 20px;
+      border: 1px solid #E0E0E0; box-shadow: 0 2px 8px rgba(0,0,0,0.04); z-index: 10;
+    }
+    .toggle-switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #E0E0E0; border-radius: 22px; transition: 0.3s; }
+    .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }
+    input:checked + .slider { background: #7B2D8E; }
+    input:checked + .slider:before { transform: translateX(18px); }
+    .toggle-label { font-size: 12px; color: #666; }
+
+    /* Detail panel */
+    .detail-panel {
+      position: absolute; top: 60px; right: 20px; width: 320px;
+      max-height: calc(100% - 100px); background: #fff;
+      border: 1px solid #EAEAEA; border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.1); overflow: hidden;
+      font-family: 'Space Grotesk', system-ui, sans-serif; font-size: 13px;
+      z-index: 20; display: none; flex-direction: column;
+    }
+    .detail-panel.visible { display: flex; }
+    .detail-panel-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 16px; background: #FAFAFA; border-bottom: 1px solid #EEE; flex-shrink: 0;
+    }
+    .detail-title { font-weight: 600; color: #333; font-size: 14px; flex: 1; word-break: break-word; }
+    .detail-type-badge { padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500; margin-left: 8px; margin-right: 12px; white-space: nowrap; }
+    .detail-close { background: none; border: none; font-size: 20px; cursor: pointer; color: #999; line-height: 1; padding: 0; transition: color 0.2s; flex-shrink: 0; }
+    .detail-close:hover { color: #333; }
+    .detail-content { padding: 16px; overflow-y: auto; flex: 1; }
+    .detail-row { margin-bottom: 12px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .detail-label { color: #888; font-size: 12px; font-weight: 500; min-width: 80px; }
+    .detail-value { color: #333; flex: 1; word-break: break-word; font-size: 12px; }
+    .detail-value.uuid-text { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #666; }
+    .detail-section { margin-top: 16px; padding-top: 14px; border-top: 1px solid #F0F0F0; }
+    .section-title { font-size: 12px; font-weight: 600; color: #666; margin-bottom: 10px; }
+    .properties-list { display: flex; flex-direction: column; gap: 8px; }
+    .property-item { display: flex; gap: 8px; font-size: 12px; }
+    .property-key { color: #888; font-weight: 500; min-width: 90px; }
+    .property-value { color: #333; flex: 1; word-break: break-word; }
+    .summary-text { line-height: 1.6; color: #444; font-size: 12px; white-space: pre-line; }
+    .labels-list { display: flex; flex-wrap: wrap; gap: 8px; }
+    .label-tag { display: inline-block; padding: 4px 12px; background: #F5F5F5; border: 1px solid #E0E0E0; border-radius: 16px; font-size: 11px; color: #555; }
+    .url-link { color: #1565C0; text-decoration: none; font-size: 11px; word-break: break-all; }
+    .url-link:hover { text-decoration: underline; }
+    .edge-relation-header { background: #F8F8F8; padding: 12px; border-radius: 8px; margin-bottom: 16px; font-size: 13px; font-weight: 500; color: #333; line-height: 1.5; }
+  </style>
+</head>
+<body>
+
+<!-- ── Navbar ─────────────────────────────────────────────────────────── -->
+<nav class="navbar">
+  <span class="nav-brand">NEWS / GRAPH</span>
+  <div class="nav-links">
+    <span class="nav-meta" id="nav-meta"></span>
+    <a href="https://github.com/nikmcfly/MiroFish-Offline" target="_blank" class="github-link">
+      GitHub <span>→</span>
+    </a>
+  </div>
+</nav>
+
+<!-- ── Workbench ──────────────────────────────────────────────────────── -->
+<div class="workbench">
+
+  <!-- Left Panel -->
+  <div class="workbench-panel">
+    <div class="scroll-container">
+
+      <!-- Step 01: News Source -->
+      <div class="step-card" id="card-01">
+        <div class="card-header">
+          <div class="step-info">
+            <span class="step-num">01</span>
+            <span class="step-title">News Source</span>
+          </div>
+          <div class="step-status">
+            <span class="badge pending" id="badge-01">Waiting</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <p class="api-note">GET /api/news → news_results_end.json</p>
+          <p class="description">Loads the latest filtered news articles produced by agents.py. Each article carries theme, bullets, source, and URL.</p>
+          <div id="loading-01" class="progress-section" style="display:none">
+            <div class="spinner-sm"></div>
+            <span>Loading news articles...</span>
+          </div>
+          <div id="tags-section" style="display:none">
+            <div class="tags-container">
+              <span class="tag-label">ENTITY TYPES</span>
+              <div class="tags-list" id="entity-tags"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 02: Graph Build -->
+      <div class="step-card" id="card-02">
+        <div class="card-header">
+          <div class="step-info">
+            <span class="step-num">02</span>
+            <span class="step-title">Graph Build</span>
+          </div>
+          <div class="step-status">
+            <span class="badge pending" id="badge-02">Waiting</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <p class="api-note">D3.js force simulation → knowledge graph</p>
+          <p class="description">Articles, sources, and themes are extracted as entity nodes. COVERS and FROM relationships form the edge network.</p>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <span class="stat-value" id="stat-nodes">—</span>
+              <span class="stat-label">Entity Nodes</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value" id="stat-edges">—</span>
+              <span class="stat-label">Relation Edges</span>
+            </div>
+            <div class="stat-card">
+              <span class="stat-value" id="stat-types">—</span>
+              <span class="stat-label">Schema Types</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 03: Refresh Pipeline -->
+      <div class="step-card" id="card-03">
+        <div class="card-header">
+          <div class="step-info">
+            <span class="step-num">03</span>
+            <span class="step-title">Refresh Pipeline</span>
+          </div>
+          <div class="step-status">
+            <span class="badge pending" id="badge-03">Ready</span>
+          </div>
+        </div>
+        <div class="card-content">
+          <p class="api-note">POST /api/refresh → aggregator.py + agents.py</p>
+          <p class="description">Re-fetches all RSS feeds and re-runs LLM agent analysis. Graph reloads automatically when complete.</p>
+          <div id="loading-03" class="progress-section" style="display:none">
+            <div class="spinner-sm"></div>
+            <span id="pipeline-status">Running pipeline...</span>
+          </div>
+          <button class="action-btn" id="refresh-btn" onclick="startRefresh()">
+            Run Full Pipeline →
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- System Dashboard -->
+    <div class="system-logs">
+      <div class="log-header">
+        <span class="log-title">SYSTEM DASHBOARD</span>
+        <span class="log-id" id="log-id">NO_PROJECT</span>
+      </div>
+      <div class="log-content" id="log-content">
+        <div class="log-line">
+          <span class="log-time">--:--:--</span>
+          <span class="log-msg">Initializing News Graph...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Graph Panel ───────────────────────────────────────────────── -->
+  <div class="graph-panel">
+    <div class="panel-header">
+      <span class="panel-title">Graph Relationship Visualization</span>
+      <div class="header-tools">
+        <button class="tool-btn" onclick="loadNews()" id="refresh-graph-btn">
+          <span class="icon-refresh" id="refresh-icon">↻</span>
+          <span class="btn-text">Refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <svg id="graph-svg"></svg>
+
+    <!-- Empty state -->
+    <div class="graph-state" id="graph-state">
+      <div class="empty-icon">❖</div>
+      <p>Waiting for news data...</p>
+    </div>
+
+    <!-- Legend -->
+    <div class="graph-legend" id="graph-legend" style="display:none">
+      <span class="legend-title">Entity Types</span>
+      <div class="legend-items" id="legend-items"></div>
+    </div>
+
+    <!-- Edge labels toggle -->
+    <div class="edge-labels-toggle">
+      <label class="toggle-switch">
+        <input type="checkbox" id="edge-toggle" checked onchange="onEdgeToggle()">
+        <span class="slider"></span>
+      </label>
+      <span class="toggle-label">Show Edge Labels</span>
+    </div>
+
+    <!-- Detail panel -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="detail-panel-header">
+        <span class="detail-title" id="dp-title">—</span>
+        <span class="detail-type-badge" id="dp-badge">NODE</span>
+        <button class="detail-close" onclick="closeDetail()">&times;</button>
+      </div>
+      <div class="detail-content" id="dp-content"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Entity color palette (MiroFish) ────────────────────────────────────
+const PALETTE = ['#FF6B35','#004E89','#7B2D8E','#1A936F','#C5283D','#E9724C','#3498db','#9b59b6','#27ae60','#f39c12'];
+const THEME_LABELS = { macro: 'Macro', geopolitical: 'Geopolitics', psychology: 'Psychology', market: 'Markets' };
+const TYPE_COLORS = {
+  'Hub':         '#FF5722',
+  'Source':      '#757575',
+  'Macro':       '#004E89',
+  'Geopolitics': '#C5283D',
+  'Psychology':  '#7B2D8E',
+  'Markets':     '#1A936F',
+};
+
+// ── State ──────────────────────────────────────────────────────────────
+let showEdgeLabels = true;
+let currentSimulation = null;
+let linkLabelsRef = null;
+let linkLabelBgRef = null;
+let activeFilter = null;  // entity type filter
+
+// ── Log helper ─────────────────────────────────────────────────────────
+function addLog(msg) {
+  const el = document.getElementById('log-content');
+  const now = new Date();
+  const t = now.toTimeString().substring(0,8) + '.' + String(now.getMilliseconds()).padStart(3,'0');
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${t}</span><span class="log-msg">${msg}</span>`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+  // Keep max 50 lines
+  while (el.children.length > 50) el.removeChild(el.firstChild);
+}
+
+// ── Build graph data from articles ────────────────────────────────────
+function buildGraphData(articles) {
+  const nodes = [];
+  const edges = [];
+  let ei = 0;
+
+  // Theme hub nodes
+  const themes = [...new Set(articles.map(a => a.theme).filter(Boolean))];
+  themes.forEach(theme => {
+    const label = THEME_LABELS[theme] || theme;
+    const count = articles.filter(a => a.theme === theme).length;
+    nodes.push({
+      uuid: `t_${theme}`, name: label, labels: ['Entity', 'Hub'],
+      attributes: { articles: String(count), theme },
+      summary: `${count} articles covering ${label}`
+    });
+  });
+
+  // Source nodes
+  const sourceCounts = {};
+  articles.forEach(a => { if (a.source) sourceCounts[a.source] = (sourceCounts[a.source]||0)+1; });
+  Object.entries(sourceCounts).forEach(([src, cnt]) => {
+    const uuid = `s_${src.replace(/[^a-zA-Z0-9]/g,'_')}`;
+    nodes.push({
+      uuid, name: src.length > 14 ? src.substring(0,14)+'…' : src,
+      labels: ['Entity', 'Source'],
+      attributes: { articles: String(cnt) },
+      summary: `${cnt} articles published by ${src}`,
+      _sourceName: src
+    });
+  });
+
+  // Article nodes + edges
+  articles.forEach((a, i) => {
+    const theme = a.theme || 'macro';
+    const label = THEME_LABELS[theme] || theme;
+    const uuid = `a_${i}`;
+    nodes.push({
+      uuid, name: (a.title||'Untitled').substring(0,15),
+      labels: ['Entity', label],
+      attributes: { theme, source: a.source||'', published: (a.published||'').substring(0,10) },
+      summary: (a.bullets||[]).map(b=>`• ${b}`).join('\n'),
+      _url: a.url, _title: a.title, _bullets: a.bullets||[], _fullArticle: a
+    });
+    // Edge: article → theme hub
+    edges.push({ uuid:`e_${ei++}`, source_node_uuid: uuid, target_node_uuid:`t_${theme}`, fact_type:'COVERS', name:'COVERS', fact:`${(a.title||'').substring(0,40)} covers ${label}` });
+    // Edge: article → source
+    if (a.source) {
+      const srcUuid = `s_${a.source.replace(/[^a-zA-Z0-9]/g,'_')}`;
+      edges.push({ uuid:`e_${ei++}`, source_node_uuid: uuid, target_node_uuid: srcUuid, fact_type:'FROM', name:'FROM', fact:`Published by ${a.source}` });
+    }
+  });
+
+  return { nodes, edges };
+}
+
+// ── Render graph (exact MiroFish GraphPanel D3 code) ──────────────────
+function renderGraph(graphData, filterType) {
+  const svgEl = document.getElementById('graph-svg');
+  svgEl.innerHTML = '';
+
+  const nodesData = graphData.nodes || [];
+  const edgesData = graphData.edges || [];
+
+  // Apply filter
+  let visibleNodes = nodesData;
+  if (filterType) {
+    const filteredIds = new Set(nodesData.filter(n => {
+      const t = n.labels?.find(l => l !== 'Entity') || 'Entity';
+      return t === filterType;
+    }).map(n => n.uuid));
+    // Also include connected nodes
+    edgesData.forEach(e => {
+      if (filteredIds.has(e.source_node_uuid)) filteredIds.add(e.target_node_uuid);
+      if (filteredIds.has(e.target_node_uuid)) filteredIds.add(e.source_node_uuid);
+    });
+    visibleNodes = nodesData.filter(n => filteredIds.has(n.uuid));
+  }
+
+  const visibleIds = new Set(visibleNodes.map(n => n.uuid));
+
+  if (visibleNodes.length === 0) {
+    document.getElementById('graph-state').style.display = 'block';
+    return;
+  }
+  document.getElementById('graph-state').style.display = 'none';
+
+  // Entity types + colors
+  const typeMap = {};
+  visibleNodes.forEach(n => {
+    const type = n.labels?.find(l => l !== 'Entity') || 'Entity';
+    if (!typeMap[type]) {
+      const idx = Object.keys(typeMap).length;
+      typeMap[type] = { name: type, count: 0, color: TYPE_COLORS[type] || PALETTE[idx % PALETTE.length] };
+    }
+    typeMap[type].count++;
+  });
+  const entityTypes = Object.values(typeMap);
+  const colorMap = {};
+  entityTypes.forEach(t => colorMap[t.name] = t.color);
+  const getColor = type => colorMap[type] || '#999';
+
+  // Update legend
+  const legendItems = document.getElementById('legend-items');
+  legendItems.innerHTML = entityTypes.map(t =>
+    `<div class="legend-item"><span class="legend-dot" style="background:${t.color}"></span><span class="legend-label">${t.name} (${t.count})</span></div>`
+  ).join('');
+  document.getElementById('graph-legend').style.display = 'block';
+
+  const container = svgEl.parentElement;
+  const width  = container.clientWidth;
+  const height = container.clientHeight;
+
+  // Prepare nodes/edges for D3
+  const nodes = visibleNodes.map(n => ({
+    id: n.uuid, name: n.name||'Unnamed',
+    type: n.labels?.find(l=>l!=='Entity')||'Entity', rawData: n
+  }));
+  const nodeIds = new Set(nodes.map(n => n.id));
+  const nodeMap = {};
+  nodes.forEach(n => nodeMap[n.id] = n);
+
+  // Process edges (multi-edge curvature, self-loops) — exact MiroFish logic
+  const edgePairCount = {};
+  const selfLoopEdges = {};
+  const tempEdges = edgesData.filter(e => nodeIds.has(e.source_node_uuid) && nodeIds.has(e.target_node_uuid));
+
+  tempEdges.forEach(e => {
+    if (e.source_node_uuid === e.target_node_uuid) {
+      if (!selfLoopEdges[e.source_node_uuid]) selfLoopEdges[e.source_node_uuid] = [];
+      selfLoopEdges[e.source_node_uuid].push({ ...e, source_name: nodeMap[e.source_node_uuid]?.name, target_name: nodeMap[e.target_node_uuid]?.name });
+    } else {
+      const pairKey = [e.source_node_uuid, e.target_node_uuid].sort().join('_');
+      edgePairCount[pairKey] = (edgePairCount[pairKey]||0)+1;
+    }
+  });
+
+  const edgePairIndex = {};
+  const processedSelfLoopNodes = new Set();
+  const edges = [];
+
+  tempEdges.forEach(e => {
+    const isSelfLoop = e.source_node_uuid === e.target_node_uuid;
+    if (isSelfLoop) {
+      if (processedSelfLoopNodes.has(e.source_node_uuid)) return;
+      processedSelfLoopNodes.add(e.source_node_uuid);
+      const allSL = selfLoopEdges[e.source_node_uuid];
+      edges.push({ source: e.source_node_uuid, target: e.target_node_uuid, type:'SELF_LOOP', name:`Self Relations (${allSL.length})`, curvature:0, isSelfLoop:true, rawData:{ isSelfLoopGroup:true, source_name:nodeMap[e.source_node_uuid]?.name, selfLoopCount:allSL.length, selfLoopEdges:allSL } });
+      return;
+    }
+    const pairKey = [e.source_node_uuid, e.target_node_uuid].sort().join('_');
+    const totalCount = edgePairCount[pairKey];
+    const currentIndex = edgePairIndex[pairKey]||0;
+    edgePairIndex[pairKey] = currentIndex+1;
+    const isReversed = e.source_node_uuid > e.target_node_uuid;
+    let curvature = 0;
+    if (totalCount > 1) {
+      const curvatureRange = Math.min(1.2, 0.6 + totalCount*0.15);
+      curvature = ((currentIndex/(totalCount-1))-0.5)*curvatureRange*2;
+      if (isReversed) curvature = -curvature;
+    }
+    edges.push({ source:e.source_node_uuid, target:e.target_node_uuid, type:e.fact_type||e.name||'RELATED', name:e.name||e.fact_type||'RELATED', curvature, isSelfLoop:false, pairIndex:currentIndex, pairTotal:totalCount, rawData:{ ...e, source_name:nodeMap[e.source_node_uuid]?.name, target_name:nodeMap[e.target_node_uuid]?.name } });
+  });
+
+  // Force simulation (exact MiroFish)
+  const simulation = d3.forceSimulation(nodes)
+    .force('link', d3.forceLink(edges).id(d=>d.id).distance(d => 150+(d.pairTotal||1-1)*50))
+    .force('charge', d3.forceManyBody().strength(-400))
+    .force('center', d3.forceCenter(width/2, height/2))
+    .force('collide', d3.forceCollide(50))
+    .force('x', d3.forceX(width/2).strength(0.04))
+    .force('y', d3.forceY(height/2).strength(0.04));
+
+  currentSimulation = simulation;
+
+  const svg = d3.select('#graph-svg')
+    .attr('width', width).attr('height', height)
+    .attr('viewBox', `0 0 ${width} ${height}`);
+
+  const g = svg.append('g');
+
+  // Zoom (exact MiroFish)
+  svg.call(d3.zoom().extent([[0,0],[width,height]]).scaleExtent([0.1,4]).on('zoom', ev => g.attr('transform', ev.transform)));
+
+  // Link paths (exact MiroFish)
+  const getLinkPath = d => {
+    const sx=d.source.x, sy=d.source.y, tx=d.target.x, ty=d.target.y;
+    if (d.isSelfLoop) { const r=30, x1=sx+8, y1=sy-4, x2=sx+8, y2=sy+4; return `M${x1},${y1} A${r},${r} 0 1,1 ${x2},${y2}`; }
+    if (d.curvature===0) return `M${sx},${sy} L${tx},${ty}`;
+    const dx=tx-sx, dy=ty-sy, dist=Math.sqrt(dx*dx+dy*dy);
+    const pairTotal=d.pairTotal||1, offsetRatio=0.25+pairTotal*0.05, baseOffset=Math.max(35,dist*offsetRatio);
+    const offsetX=-dy/dist*d.curvature*baseOffset, offsetY=dx/dist*d.curvature*baseOffset;
+    const cx=(sx+tx)/2+offsetX, cy=(sy+ty)/2+offsetY;
+    return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
+  };
+  const getLinkMidpoint = d => {
+    const sx=d.source.x, sy=d.source.y, tx=d.target.x, ty=d.target.y;
+    if (d.isSelfLoop) return {x:sx+70, y:sy};
+    if (d.curvature===0) return {x:(sx+tx)/2, y:(sy+ty)/2};
+    const dx=tx-sx, dy=ty-sy, dist=Math.sqrt(dx*dx+dy*dy);
+    const pairTotal=d.pairTotal||1, offsetRatio=0.25+pairTotal*0.05, baseOffset=Math.max(35,dist*offsetRatio);
+    const offsetX=-dy/dist*d.curvature*baseOffset, offsetY=dx/dist*d.curvature*baseOffset;
+    const cx=(sx+tx)/2+offsetX, cy=(sy+ty)/2+offsetY;
+    return {x:0.25*sx+0.5*cx+0.25*tx, y:0.25*sy+0.5*cy+0.25*ty};
+  };
+
+  const linkGroup = g.append('g').attr('class', 'links');
+
+  const link = linkGroup.selectAll('path').data(edges).enter().append('path')
+    .attr('stroke','#C0C0C0').attr('stroke-width',1.5).attr('fill','none')
+    .style('cursor','pointer')
+    .on('click', (ev, d) => {
+      ev.stopPropagation();
+      linkGroup.selectAll('path').attr('stroke','#C0C0C0').attr('stroke-width',1.5);
+      linkLabelBg.attr('fill','rgba(255,255,255,0.95)'); linkLabels.attr('fill','#666');
+      d3.select(ev.target).attr('stroke','#3498db').attr('stroke-width',3);
+      showEdgeDetail(d.rawData);
+    });
+
+  const linkLabelBg = linkGroup.selectAll('rect').data(edges).enter().append('rect')
+    .attr('fill','rgba(255,255,255,0.95)').attr('rx',3).attr('ry',3)
+    .style('cursor','pointer').style('pointer-events','all')
+    .style('display', showEdgeLabels ? 'block' : 'none')
+    .on('click', (ev, d) => {
+      ev.stopPropagation();
+      linkGroup.selectAll('path').attr('stroke','#C0C0C0').attr('stroke-width',1.5);
+      linkLabelBg.attr('fill','rgba(255,255,255,0.95)'); linkLabels.attr('fill','#666');
+      link.filter(l=>l===d).attr('stroke','#3498db').attr('stroke-width',3);
+      d3.select(ev.target).attr('fill','rgba(52,152,219,0.1)');
+      showEdgeDetail(d.rawData);
+    });
+
+  const linkLabels = linkGroup.selectAll('text').data(edges).enter().append('text')
+    .text(d=>d.name).attr('font-size','9px').attr('fill','#666')
+    .attr('text-anchor','middle').attr('dominant-baseline','middle')
+    .style('cursor','pointer').style('pointer-events','all')
+    .style('font-family','system-ui, sans-serif')
+    .style('display', showEdgeLabels ? 'block' : 'none')
+    .on('click', (ev, d) => {
+      ev.stopPropagation();
+      linkGroup.selectAll('path').attr('stroke','#C0C0C0').attr('stroke-width',1.5);
+      linkLabelBg.attr('fill','rgba(255,255,255,0.95)'); linkLabels.attr('fill','#666');
+      link.filter(l=>l===d).attr('stroke','#3498db').attr('stroke-width',3);
+      d3.select(ev.target).attr('fill','#3498db');
+      showEdgeDetail(d.rawData);
+    });
+
+  linkLabelsRef = linkLabels;
+  linkLabelBgRef = linkLabelBg;
+
+  // Node circles (exact MiroFish)
+  const nodeGroup = g.append('g').attr('class', 'nodes');
+
+  const node = nodeGroup.selectAll('circle').data(nodes).enter().append('circle')
+    .attr('r', 10).attr('fill', d=>getColor(d.type))
+    .attr('stroke','#fff').attr('stroke-width',2.5)
+    .style('cursor','pointer')
+    .call(d3.drag()
+      .on('start', (ev,d)=>{ d.fx=d.x; d.fy=d.y; d._dragStartX=ev.x; d._dragStartY=ev.y; d._isDragging=false; })
+      .on('drag',  (ev,d)=>{ const dx=ev.x-d._dragStartX, dy=ev.y-d._dragStartY, dist=Math.sqrt(dx*dx+dy*dy); if (!d._isDragging&&dist>3){d._isDragging=true;simulation.alphaTarget(0.3).restart();} if(d._isDragging){d.fx=ev.x;d.fy=ev.y;} })
+      .on('end',   (ev,d)=>{ if(d._isDragging)simulation.alphaTarget(0); d.fx=null;d.fy=null;d._isDragging=false; })
+    )
+    .on('click', (ev,d)=>{ ev.stopPropagation(); node.attr('stroke','#fff').attr('stroke-width',2.5); linkGroup.selectAll('path').attr('stroke','#C0C0C0').attr('stroke-width',1.5); d3.select(ev.target).attr('stroke','#E91E63').attr('stroke-width',4); link.filter(l=>l.source.id===d.id||l.target.id===d.id).attr('stroke','#E91E63').attr('stroke-width',2.5); showNodeDetail(d.rawData, d.type, getColor(d.type)); })
+    .on('mouseenter', (ev,d)=>{ if (!document.getElementById('dp-title').dataset.uuid || document.getElementById('dp-title').dataset.uuid!==d.id) d3.select(ev.target).attr('stroke','#333').attr('stroke-width',3); })
+    .on('mouseleave', (ev,d)=>{ if (!document.getElementById('dp-title').dataset.uuid || document.getElementById('dp-title').dataset.uuid!==d.id) d3.select(ev.target).attr('stroke','#fff').attr('stroke-width',2.5); });
+
+  // Node labels (exact MiroFish)
+  const nodeLabels = nodeGroup.selectAll('text').data(nodes).enter().append('text')
+    .text(d=>d.name.length>8?d.name.substring(0,8)+'…':d.name)
+    .attr('font-size','11px').attr('fill','#333').attr('font-weight','500')
+    .attr('dx',14).attr('dy',4).style('pointer-events','none').style('font-family','system-ui, sans-serif');
+
+  // Tick (exact MiroFish)
+  simulation.on('tick', ()=>{
+    link.attr('d', d=>getLinkPath(d));
+    linkLabels.each(function(d){ const mid=getLinkMidpoint(d); d3.select(this).attr('x',mid.x).attr('y',mid.y).attr('transform',''); });
+    linkLabelBg.each(function(d,i){ const mid=getLinkMidpoint(d), textEl=linkLabels.nodes()[i]; try{ const bbox=textEl.getBBox(); d3.select(this).attr('x',mid.x-bbox.width/2-4).attr('y',mid.y-bbox.height/2-2).attr('width',bbox.width+8).attr('height',bbox.height+4).attr('transform',''); }catch(e){} });
+    node.attr('cx',d=>d.x).attr('cy',d=>d.y);
+    nodeLabels.attr('x',d=>d.x).attr('y',d=>d.y);
+  });
+
+  // Click blank to close detail
+  svg.on('click', ()=>{ closeDetail(); node.attr('stroke','#fff').attr('stroke-width',2.5); linkGroup.selectAll('path').attr('stroke','#C0C0C0').attr('stroke-width',1.5); linkLabelBg.attr('fill','rgba(255,255,255,0.95)'); linkLabels.attr('fill','#666'); });
+}
+
+// ── Detail panel helpers ───────────────────────────────────────────────
+function showNodeDetail(rawData, entityType, color) {
+  const panel = document.getElementById('detail-panel');
+  const badge = document.getElementById('dp-badge');
+  const titleEl = document.getElementById('dp-title');
+  const content = document.getElementById('dp-content');
+
+  badge.textContent = entityType;
+  badge.style.background = color;
+  badge.style.color = '#fff';
+  titleEl.textContent = rawData._title || rawData.name || rawData.uuid;
+  titleEl.dataset.uuid = rawData.uuid;
+
+  let html = `<div class="detail-row"><span class="detail-label">Name:</span><span class="detail-value">${esc(rawData.name||rawData.uuid)}</span></div>
+    <div class="detail-row"><span class="detail-label">UUID:</span><span class="detail-value uuid-text">${esc(rawData.uuid)}</span></div>`;
+
+  if (rawData.attributes && Object.keys(rawData.attributes).length) {
+    html += `<div class="detail-section"><div class="section-title">Properties</div><div class="properties-list">`;
+    Object.entries(rawData.attributes).forEach(([k,v]) => {
+      html += `<div class="property-item"><span class="property-key">${esc(k)}:</span><span class="property-value">${esc(v)}</span></div>`;
+    });
+    html += `</div></div>`;
+  }
+
+  if (rawData.summary) {
+    html += `<div class="detail-section"><div class="section-title">Summary</div><div class="summary-text">${esc(rawData.summary)}</div></div>`;
+  }
+
+  if (rawData._url) {
+    html += `<div class="detail-section"><div class="section-title">Link</div><a class="url-link" href="${esc(rawData._url)}" target="_blank" rel="noopener">${esc(rawData._url)}</a></div>`;
+  }
+
+  if (rawData.labels?.length) {
+    html += `<div class="detail-section"><div class="section-title">Labels</div><div class="labels-list">${rawData.labels.map(l=>`<span class="label-tag">${esc(l)}</span>`).join('')}</div></div>`;
+  }
+
+  content.innerHTML = html;
+  panel.classList.add('visible');
+}
+
+function showEdgeDetail(rawData) {
+  const panel = document.getElementById('detail-panel');
+  const badge = document.getElementById('dp-badge');
+  const titleEl = document.getElementById('dp-title');
+  const content = document.getElementById('dp-content');
+
+  badge.textContent = 'RELATION';
+  badge.style.background = '#3498db';
+  badge.style.color = '#fff';
+  titleEl.textContent = rawData.name || rawData.fact_type || 'Relationship';
+  titleEl.dataset.uuid = '';
+
+  let html = `<div class="edge-relation-header">${esc(rawData.source_name||'?')} → ${esc(rawData.target_name||'?')}</div>`;
+  if (rawData.fact) html += `<div class="detail-row"><span class="detail-label">Fact:</span><span class="detail-value fact-text">${esc(rawData.fact)}</span></div>`;
+  if (rawData.fact_type) html += `<div class="detail-row"><span class="detail-label">Type:</span><span class="detail-value">${esc(rawData.fact_type)}</span></div>`;
+
+  content.innerHTML = html;
+  panel.classList.add('visible');
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('visible');
+  document.getElementById('dp-title').dataset.uuid = '';
+}
+
+function onEdgeToggle() {
+  showEdgeLabels = document.getElementById('edge-toggle').checked;
+  if (linkLabelsRef) linkLabelsRef.style('display', showEdgeLabels ? 'block' : 'none');
+  if (linkLabelBgRef) linkLabelBgRef.style('display', showEdgeLabels ? 'block' : 'none');
+}
+
+// ── Load news ──────────────────────────────────────────────────────────
+let lastGraphData = null;
+
+async function loadNews() {
+  const icon = document.getElementById('refresh-icon');
+  icon.classList.add('spinning');
+  setBadge('badge-01', 'processing', 'Loading');
+  document.getElementById('loading-01').style.display = 'flex';
+  document.getElementById('card-01').classList.add('active');
+  addLog('GET /api/news — loading articles...');
+
+  try {
+    const res = await fetch('/api/news');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const articles = await res.json();
+
+    addLog(`Loaded ${articles.length} articles`);
+
+    // Entity type tags
+    const themes = [...new Set(articles.map(a=>a.theme).filter(Boolean))];
+    const sources = [...new Set(articles.map(a=>a.source).filter(Boolean))];
+    const tagsEl = document.getElementById('entity-tags');
+    const allTypes = [
+      ...themes.map(t => THEME_LABELS[t]||t),
+      'Source', 'Hub'
+    ];
+    tagsEl.innerHTML = allTypes.map(t =>
+      `<span class="entity-tag ${activeFilter===t?'active':''}" onclick="filterType('${t}')">${t}</span>`
+    ).join('') + `<span class="entity-tag ${!activeFilter?'active':''}" onclick="filterType(null)">All</span>`;
+
+    document.getElementById('tags-section').style.display = 'block';
+    document.getElementById('loading-01').style.display = 'none';
+    setBadge('badge-01', 'success', 'Loaded');
+    document.getElementById('card-01').classList.remove('active');
+    document.getElementById('card-01').classList.add('completed');
+
+    // Build graph
+    setBadge('badge-02', 'processing', 'Building');
+    document.getElementById('card-02').classList.add('active');
+    addLog('Building knowledge graph...');
+    const graphData = buildGraphData(articles);
+    lastGraphData = graphData;
+
+    // Stats
+    document.getElementById('stat-nodes').textContent = graphData.nodes.length;
+    document.getElementById('stat-edges').textContent = graphData.edges.length;
+    const typeCount = new Set(graphData.nodes.map(n=>n.labels?.find(l=>l!=='Entity')||'Entity')).size;
+    document.getElementById('stat-types').textContent = typeCount;
+
+    document.getElementById('nav-meta').textContent = `${articles.length} articles · ${themes.length} themes · ${sources.length} sources`;
+    document.getElementById('log-id').textContent = new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toUpperCase();
+
+    addLog(`Graph: ${graphData.nodes.length} nodes, ${graphData.edges.length} edges, ${typeCount} types`);
+
+    setBadge('badge-02', 'success', 'Complete');
+    document.getElementById('card-02').classList.remove('active');
+    document.getElementById('card-02').classList.add('completed');
+
+    renderGraph(graphData, activeFilter);
+    addLog('Graph rendered — ready');
+
+  } catch (err) {
+    addLog(`ERROR: ${err.message}`);
+    setBadge('badge-01', 'pending', 'Error');
+    document.getElementById('loading-01').style.display = 'none';
+  } finally {
+    icon.classList.remove('spinning');
+  }
+}
+
+// ── Filter by entity type ──────────────────────────────────────────────
+function filterType(type) {
+  activeFilter = type;
+  if (lastGraphData) renderGraph(lastGraphData, activeFilter);
+  // Update tag styles
+  document.querySelectorAll('.entity-tag').forEach(el => {
+    const t = el.textContent;
+    el.classList.toggle('active', (type===null && t==='All') || t===type);
+  });
+  addLog(`Filter: ${type||'All'}`);
+}
+
+// ── Refresh pipeline ───────────────────────────────────────────────────
+async function startRefresh() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true;
+  setBadge('badge-03', 'processing', 'Running');
+  document.getElementById('loading-03').style.display = 'flex';
+  document.getElementById('card-03').classList.add('active');
+  addLog('POST /api/refresh — starting pipeline...');
+
+  try {
+    const res = await fetch('/api/refresh', { method: 'POST' });
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split('\n'); buf = lines.pop();
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const msg = JSON.parse(line.slice(6));
+        if (msg === 'DONE') {
+          addLog('Pipeline complete — reloading graph...');
+          await loadNews();
+        } else {
+          document.getElementById('pipeline-status').textContent = msg.substring(0,60);
+          addLog(msg.substring(0,120));
+        }
+      }
+    }
+    setBadge('badge-03', 'accent', 'Done');
+  } catch (err) {
+    addLog(`Pipeline ERROR: ${err.message}`);
+    setBadge('badge-03', 'pending', 'Error');
+  } finally {
+    btn.disabled = false;
+    document.getElementById('loading-03').style.display = 'none';
+    document.getElementById('card-03').classList.remove('active');
+  }
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+function setBadge(id, cls, text) {
+  const el = document.getElementById(id);
+  el.className = `badge ${cls}`;
+  el.textContent = text;
+}
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Init ───────────────────────────────────────────────────────────────
+window.addEventListener('resize', () => { if (lastGraphData) renderGraph(lastGraphData, activeFilter); });
+loadNews();
+</script>
+</body>
+</html>

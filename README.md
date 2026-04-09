@@ -11,7 +11,6 @@
 
 <br/>
 
-<img width="2000" height="1600" alt="image" src="https://github.com/user-attachments/assets/aed50173-e473-4975-ab0b-89262f92261f" />
 <img width="1213" alt="News Intelligence Graph — interactive D3.js knowledge graph" src="https://github.com/user-attachments/assets/8504d397-aa72-4db8-89c6-a681ace06905" />
 
 <br/><br/>

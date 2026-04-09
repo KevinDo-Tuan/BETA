@@ -2,7 +2,7 @@
 
 # News Intelligence Graph
 
-**Turn 57+ news sources into a live, interactive knowledge graph — powered by free LLMs.**
+**Turn 57+ well-known sources, 2000+ news, into a live, interactive knowledge graph — powered by free LLMs.**
 
 [![Python 3.10](https://img.shields.io/badge/Python-3.10-black?style=flat-square&logo=python)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
@@ -11,6 +11,7 @@
 
 <br/>
 
+<img width="2000" height="1600" alt="image" src="https://github.com/user-attachments/assets/aed50173-e473-4975-ab0b-89262f92261f" />
 <img width="1213" alt="News Intelligence Graph — interactive D3.js knowledge graph" src="https://github.com/user-attachments/assets/8504d397-aa72-4db8-89c6-a681ace06905" />
 
 <br/><br/>

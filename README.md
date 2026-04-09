@@ -1,6 +1,7 @@
 # News Intelligence Graph
 
- A fully automated news intelligence pipeline that fetches articles from 57+ sources, uses parallel free LLMs to extract structured bullet-point summaries, deduplicates semantically similar stories, and visualizes the result as an interactive knowledge graph — styled after [MiroFish](https://github.com/nikmcfly/MiroFish-Offline).
+ A fully automated news intelligence pipeline that fetches articles from 57+ sources, uses parallel free LLMs to extract structured bullet-point summaries, deduplicates semantically similar stories, and visualizes the result as an interactive knowledge graph — styled after [MiroFish](https://github.com/nikmcfly/MiroFish-Offline).<img width="1213" height="696" alt="{DD392805-D0CE-4BB6-97E1-024627C0B82F}" src="https://github.com/user-attachments/assets/8504d397-aa72-4db8-89c6-a681ace06905" />
+
 
 ---
 

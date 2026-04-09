@@ -1,131 +1,129 @@
+<div align="center">
+
 # News Intelligence Graph
 
- A fully automated news intelligence pipeline that fetches articles from 57+ sources, uses parallel free LLMs to extract structured bullet-point summaries, deduplicates semantically similar stories, and visualizes the result as an interactive knowledge graph — styled after [MiroFish](https://github.com/nikmcfly/MiroFish-Offline).<img width="1213" height="696" alt="{DD392805-D0CE-4BB6-97E1-024627C0B82F}" src="https://github.com/user-attachments/assets/8504d397-aa72-4db8-89c6-a681ace06905" />
+**Turn 57+ news sources into a live, interactive knowledge graph — powered by free LLMs.**
 
+[![Python 3.10](https://img.shields.io/badge/Python-3.10-black?style=flat-square&logo=python)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-black?style=flat-square)](LICENSE)
+[![Free LLMs](https://img.shields.io/badge/LLMs-100%25%20Free%20Tier-black?style=flat-square)](https://console.groq.com)
+[![No credit card](https://img.shields.io/badge/API%20Keys-No%20Credit%20Card-black?style=flat-square)](.env.example)
 
----
+<br/>
 
-## Quick start
+<img width="1213" alt="News Intelligence Graph — interactive D3.js knowledge graph" src="https://github.com/user-attachments/assets/8504d397-aa72-4db8-89c6-a681ace06905" />
 
-```bash
-# 1. Clone and install
-git clone https://github.com/KevinDo-Tuan/BETA.git
-cd BETA
-pip install feedparser requests trafilatura beautifulsoup4 scikit-learn numpy python-dotenv
+<br/><br/>
 
-# 2. Add your API keys (see Environment Setup below)
-cp .env.example .env
-# edit .env and fill in your keys
+*Every morning, one command fetches the day's macro, geopolitical, market, and crypto news — filters it with parallel LLM agents — deduplicates semantically — and maps it as an interactive force graph you can explore.*
 
-# 3. Run everything in one command
-py run.py
-```
-
-`run.py` runs all four stages in order and opens the browser automatically.
+</div>
 
 ---
 
-## What it does
+## How it works
 
 ```
 aggregator.py → summary.py → dedup.py → mindmap.py
-   Fetch          Analyze      Dedupe     Visualize
+   57+ RSS        Parallel     TF-IDF      D3.js
+   sources        LLM agents   cosine      graph
+   ~2,000 art.    filter+sum.  dedup       localhost:8765
 ```
 
-| Step | Script | Input | Output | Description |
-|------|--------|-------|--------|-------------|
-| 1 | `aggregator.py` | RSS feeds | `news_results.json` | Fetches last 24h of articles from 57+ curated sources |
-| 2 | `summary.py` | `news_results.json` | `news_stage1.json` | Parallel LLM agents filter and summarize into bullet-point JSON |
-| 3 | `dedup.py` | `news_stage1.json` | `news_results_end.json` | TF-IDF cosine similarity removes semantic duplicates |
-| 4 | `mindmap.py` | `news_results_end.json` | Browser at `localhost:8765` | Serves an interactive D3.js knowledge graph |
+| # | Script | What happens | Time |
+|---|--------|-------------|------|
+| 1 | `aggregator.py` | Fetches last 24h from 57+ curated RSS sources | 2–5 min |
+| 2 | `summary.py` | 8 parallel LLM agents filter for relevance, write 2–3 bullet points per article | 5–20 min |
+| 3 | `dedup.py` | TF-IDF cosine similarity removes stories that say the same thing | < 1 sec |
+| 4 | `mindmap.py` | Serves an interactive knowledge graph at `localhost:8765` | instant |
 
 ---
 
-## Environment Setup
+## Quickstart
 
-### API keys (all free, no credit card required)
-
-Create a `.env` file in the project root:
-
-```env
-# Currents API — used by aggregator.py for additional news topics
-# Get free key: https://currentsapi.services/en/register
-CURRENTS_API_KEY=your_currents_api_key_here
-
-# Groq — primary LLM provider (fastest, most reliable on free tier)
-# Get free key: https://console.groq.com
-GROQ_API_KEY=your_groq_api_key_here
-
-# Google Gemini — secondary LLM provider (1M context window)
-# Get free key: https://aistudio.google.com/app/apikey
-GEMINI_API_KEY=your_gemini_api_key_here
-
-# OpenRouter — fallback LLM provider (access to many free models)
-# Get free key: https://openrouter.ai/settings/keys
-OPENROUTER_API_KEY=your_openrouter_api_key_here
-
-# Together AI — optional, not required for core pipeline
-# Get free key: https://api.together.ai
-TOGETHER_API_KEY=your_together_api_key_here
-```
-
-> **Minimum to run:** `GROQ_API_KEY` + `CURRENTS_API_KEY`. Gemini and OpenRouter are fallback providers — the pipeline still works without them, just with fewer parallel agents.
-
----
-
-## Installation
-
-### Requirements
-
-- **Python 3.10** — use `py` on Windows (avoids Python 3.13/uv conflicts)
-- Internet connection for RSS feeds and LLM API calls
-
-### Dependencies
+### 1. Clone & install
 
 ```bash
+git clone https://github.com/KevinDo-Tuan/BETA.git
+cd BETA
 pip install feedparser requests trafilatura beautifulsoup4 scikit-learn numpy python-dotenv
 ```
 
----
+### 2. Add your API keys
 
-## Usage
+All keys are **free** — no credit card required.
 
-### Option A — Run everything at once (recommended)
+```bash
+cp .env.example .env
+# open .env and paste your keys
+```
+
+```env
+# Required
+CURRENTS_API_KEY=your_key_here    # https://currentsapi.services/en/register
+GROQ_API_KEY=your_key_here        # https://console.groq.com
+
+# Recommended (fallback LLM providers)
+GEMINI_API_KEY=your_key_here      # https://aistudio.google.com/app/apikey
+OPENROUTER_API_KEY=your_key_here  # https://openrouter.ai/settings/keys
+```
+
+> Minimum: `GROQ_API_KEY` + `CURRENTS_API_KEY`. The pipeline works without Gemini/OpenRouter — just fewer parallel agents.
+
+### 3. Run
 
 ```bash
 py run.py
 ```
 
-The browser opens automatically at `http://localhost:8765` when all steps complete.
+Browser opens automatically at `http://localhost:8765`.
 
-### Option B — Skip the RSS fetch (reuse existing data)
+---
 
-```bash
-py run.py --skip-fetch
-```
+## Run options
 
-Skips `aggregator.py` and starts from `summary.py` using your existing `news_results.json`.
+| Command | What it does |
+|---------|-------------|
+| `py run.py` | Full pipeline — fetch → analyze → dedup → visualize |
+| `py run.py --skip-fetch` | Skip RSS fetch, reuse today's `news_results.json` |
+| `py run.py --only-map` | Jump straight to the map with existing data |
 
-### Option C — Jump straight to the map
+---
 
-```bash
-py run.py --only-map
-```
+## The Graph
 
-Opens the mindmap immediately using `news_results_end.json` from the last run.
+The mindmap UI is styled after [MiroFish-Offline](https://github.com/nikmcfly/MiroFish-Offline) — same white dot-grid canvas, curved D3.js force graph, step cards, and detail panels.
 
-### Option D — Run scripts individually
+**Node types**
 
-```bash
-py aggregator.py   # ~2–5 min
-py summary.py      # ~5–20 min (depends on rate limits)
-py dedup.py        # <1 second
-py mindmap.py      # opens browser
-```
+| Color | Type | What it represents |
+|-------|------|--------------------|
+| `#FF5722` | Hub | Theme center (Macro / Geopolitics / Markets / Psychology) |
+| `#004E89` | Macro | Macro-economics article |
+| `#C5283D` | Geopolitics | Geopolitical article |
+| `#7B2D8E` | Psychology | Market sentiment article |
+| `#1A936F` | Markets | Market dynamics article |
+| `#757575` | Source | News publisher |
+
+**Controls**
+
+| Input | Action |
+|-------|--------|
+| Click node | Open detail panel — bullets, source, date, link |
+| Click theme node | See all articles in that theme |
+| Click edge | See relationship detail |
+| Scroll | Zoom in / out |
+| Drag node | Pin it in place |
+| Drag canvas | Pan |
+| Entity tag (left panel) | Filter graph to one type |
+| Refresh News | Re-run full pipeline with live log stream |
 
 ---
 
 ## Sources (~57 active)
+
+<details>
+<summary>Click to expand full source list</summary>
 
 | Category | Sources |
 |----------|---------|
@@ -137,121 +135,52 @@ py mindmap.py      # opens browser
 | **Crypto** | CoinDesk, CoinTelegraph, The Block, Decrypt, Blockworks, BeInCrypto, CryptoSlate, Messari, Glassnode, The Defiant, Bankless, DL News, and more |
 | **Aggregated** | Currents API, GDELT topic queries (65K+ underlying sources) |
 
----
-
-## Mindmap UI
-
-The graph is built with D3.js, styled after [MiroFish-Offline](https://github.com/nikmcfly/MiroFish-Offline).
-
-**Layout:**
-
-```
-┌─────────────────────┬──────────────────────────────────────────┐
-│  01 News Source     │  Graph Panel (white dot-grid)            │
-│     entity tags     │                                          │
-│                     │  [Source]──FROM──▶[Article]──COVERS──▶[Theme Hub]
-│  02 Graph Build     │                                          │
-│     stats grid      │  Click node → detail panel (right side) │
-│                     │  Scroll = zoom  ·  Drag = pan           │
-│  03 Refresh         │                                          │
-│     pipeline btn    │  Legend (bottom-left)                    │
-│  ─────────────────  │  Edge Labels toggle (top-right)          │
-│  SYSTEM DASHBOARD   │                                          │
-└─────────────────────┴──────────────────────────────────────────┘
-```
-
-**Node colors:**
-
-| Color | Entity | Description |
-|-------|--------|-------------|
-| Orange `#FF5722` | Hub | Theme center node |
-| Blue `#004E89` | Macro | Macro-economics articles |
-| Red `#C5283D` | Geopolitics | Geopolitical articles |
-| Purple `#7B2D8E` | Psychology | Market psychology articles |
-| Green `#1A936F` | Markets | Market dynamics articles |
-| Gray `#757575` | Source | News publishers |
-
-**Interactions:**
-
-| Action | Result |
-|--------|--------|
-| Click article node | Bullets, source, published date, link |
-| Click theme or source node | All connected articles |
-| Click edge | Relationship detail |
-| Scroll | Zoom |
-| Drag node | Pin position |
-| Drag background | Pan |
-| Edge Labels toggle | Show/hide COVERS / FROM labels |
-| Entity tag (left panel) | Filter graph to one entity type |
-| Refresh News button | Re-runs full pipeline with live log |
+</details>
 
 ---
 
-## Output format
-
-### `news_results_end.json` — array of article objects
+## Output schema
 
 ```json
-[
-  {
-    "title": "Fed signals pause as inflation cools",
-    "theme": "macro",
-    "bullets": [
-      "Federal Reserve holds rates steady at 5.25–5.5%",
-      "Core PCE falls to 2.6%, approaching the 2% target",
-      "Chair Powell signals no cuts until Q3 data confirms the trend"
-    ],
-    "source": "Reuters",
-    "url": "https://reuters.com/article/...",
-    "published": "2026-04-09T14:32:00"
-  }
-]
+{
+  "title": "Fed signals pause as inflation cools",
+  "theme": "macro",
+  "bullets": [
+    "Federal Reserve holds rates steady at 5.25–5.5%",
+    "Core PCE falls to 2.6%, approaching the 2% target",
+    "Chair Powell signals no cuts until Q3 data confirms the trend"
+  ],
+  "source": "Reuters",
+  "url": "https://reuters.com/article/...",
+  "published": "2026-04-09T14:32:00"
+}
 ```
 
-`theme` is always one of: `macro` · `geopolitical` · `psychology` · `market`
+`theme` → `macro` · `geopolitical` · `psychology` · `market`
 
 ---
 
-## How the LLM pipeline works (`summary.py`)
+## LLM providers (all free tier)
 
-- Splits ~2,000 articles into **batches of 80**
-- Sends batches in parallel to **Groq**, **Gemini**, and **OpenRouter** (all free)
-- Each LLM filters for relevance and outputs 2–3 bullet points per qualifying article
-- Wave-based execution: 8 concurrent calls → 62s pause → repeat (respects per-minute limits)
-- Failed batches retry with exponential backoff: 5s → 10s → 20s
+| Provider | Model | Context | RPM | Daily |
+|----------|-------|---------|-----|-------|
+| Groq | `llama-4-scout-17b-16e-instruct` | 128K | 30 | 1,000 |
+| Gemini | `gemini-2.5-flash` | 1M | 15 | 1,500 |
+| OpenRouter | `gemma-3-27b-it:free` | 128K | 20 | 200 |
 
-| Provider | Model | Context |
-|----------|-------|---------|
-| Groq | `meta-llama/llama-4-scout-17b-16e-instruct` | 128K |
-| Gemini | `gemini-2.5-flash` | 1M |
-| OpenRouter | `google/gemma-3-27b-it:free` | 128K |
+8 agents run in parallel, with 62s pauses between waves to respect per-minute limits. Failed batches retry with 5s → 10s → 20s backoff.
 
 ---
 
-## How deduplication works (`dedup.py`)
+## Deduplication
 
-Uses **TF-IDF cosine similarity** on full bullet text — not just title matching:
+`dedup.py` uses **TF-IDF cosine similarity** on the full bullet text — not just headline matching.
 
-1. Build a text string per article: `title + bullets + source`
-2. Vectorize with TF-IDF bigrams (`ngram_range=(1,2)`)
-3. Compute pairwise cosine similarity
-4. Pairs scoring ≥ **0.65** → keep the newer article, discard the older
+- Vectorizes `title + bullets + source` with TF-IDF bigrams
+- Any two articles with cosine similarity ≥ 0.65 → keep the newer one
+- Catches semantically identical stories with different headlines:
 
-Catches duplicates that title-matching misses:
-> *"Fed raises rates 25bps"* and *"Federal Reserve hikes by a quarter point"* → correctly removed.
-
----
-
-## Free-tier rate limits
-
-| Provider | Requests/min | Daily limit | Resets |
-|----------|-------------|-------------|--------|
-| Groq | ~30 | ~1,000 | Midnight UTC |
-| Gemini | ~15 | ~1,500 | Midnight UTC |
-| OpenRouter | ~20 | ~200 | Daily |
-| Currents API | — | 600 | Daily |
-
-If limits are hit mid-run, those batches are skipped. Re-run after midnight UTC.
+> *"Fed raises rates 25bps"* and *"Federal Reserve hikes by a quarter point"* → one removed.
 
 ---
 
@@ -259,44 +188,62 @@ If limits are hit mid-run, those batches are skipped. Re-run after midnight UTC.
 
 ```
 BETA/
-├── run.py                 # One-command launcher for all 4 stages
-├── aggregator.py          # Stage 1 — RSS fetcher (57+ sources, 24h lookback)
-├── summary.py             # Stage 2 — Parallel LLM bullet-point extraction
-├── dedup.py               # Stage 3 — TF-IDF semantic deduplication
-├── mindmap.py             # Stage 4 — Local HTTP server (port 8765)
-├── mindmap.html           # D3.js interactive knowledge graph frontend
-├── .env                   # Your API keys (never commit this)
-├── .env.example           # API key template
-├── .gitignore
-├── news_results.json      # Aggregator output (gitignored)
-├── news_stage1.json       # LLM raw output before dedup (gitignored)
-└── news_results_end.json  # Final graph data (gitignored)
+├── run.py              ← start here
+├── aggregator.py       Stage 1 — RSS fetch
+├── summary.py          Stage 2 — LLM analysis
+├── dedup.py            Stage 3 — semantic dedup
+├── mindmap.py          Stage 4 — web server
+├── mindmap.html        D3.js graph frontend
+├── .env.example        API key template
+└── .gitignore
 ```
 
 ---
 
 ## Troubleshooting
 
-**`413 Payload Too Large` from Groq**
-Batch too large for that model. The default 80-article batch works reliably with `llama-4-scout`. Do not switch models without testing.
+<details>
+<summary>429 Too Many Requests</summary>
 
-**`429 Too Many Requests`**
-Rate limit hit. The script retries 3 times with backoff. If all fail, the batch is skipped and the pipeline continues. Re-run after midnight UTC.
+Free-tier daily quota hit. The script retries 3 times then skips the batch and continues. Re-run after midnight UTC, or use `py run.py --skip-fetch` to skip re-fetching.
 
-**`news_stage1.json` is empty or very small**
-Daily quota exhausted. Check console for `429` errors. Wait until midnight UTC, then re-run with `py run.py --skip-fetch`.
+</details>
 
-**`py` not found on Windows**
-Use the Python Launcher from the official [python.org](https://python.org) installer. Alternatively use `python run.py` — ensure Python 3.10 is active.
+<details>
+<summary>413 Payload Too Large from Groq</summary>
 
-**Graph shows 0 articles**
-`news_results_end.json` is missing or empty. Run: `py run.py --skip-fetch`
+Only affects non-scout models. The default `llama-4-scout` handles 80-article batches reliably. Do not change the model without testing.
 
-**Port 8765 already in use**
-Kill the existing `mindmap.py` process, or change `PORT = 8765` in `mindmap.py`.
+</details>
+
+<details>
+<summary>Graph shows 0 articles</summary>
+
+`news_results_end.json` is missing. Run:
+```bash
+py run.py --skip-fetch
+```
+
+</details>
+
+<details>
+<summary>Port 8765 already in use</summary>
+
+Kill the existing `mindmap.py` process (`Ctrl+C` in its terminal), or change `PORT = 8765` in `mindmap.py`.
+
+</details>
+
+<details>
+<summary>py command not found on Windows</summary>
+
+Install Python from [python.org](https://python.org) (includes the `py` launcher). Alternatively use `python run.py` — ensure Python 3.10 is active, not 3.13.
+
+</details>
 
 ---
 
-## License
+<div align="center">
 
-MIT
+MIT License · Built with [MiroFish-Offline](https://github.com/nikmcfly/MiroFish-Offline) inspiration
+
+</div>
